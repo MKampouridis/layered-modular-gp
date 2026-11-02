@@ -60,6 +60,7 @@ def test_repeated_adf_calls_are_each_charged():
     # and(1) + 2 * [call(1) + args(2) + body(3)] = 13
     assert p.cost_per_case() == 13
     assert p.stored_size() == 7 + 3 + 1
+    assert p.expanded_size() == 7  # and(or(x0, x1), or(x0, x1))
     assert reference_eval(p, np.array([[True, False]]))[1] == 13
 
 
@@ -72,8 +73,9 @@ def test_hierarchical_adf_cost_and_depth():
     adf0 = 3
     adf1 = 5 + adf0  # 5 stored nodes + one call's body
     assert p.cost_per_case() == 4 + adf1
-    # inlined: or(x0, nand(x1, x0)) under two call nodes -> depth 4
-    assert p.depth() == 4
+    # inlined: or(x0, nand(x1, x0)) -> depth 2, size 5
+    assert p.depth() == 2
+    assert p.expanded_size() == 5
     X = np.array([[a, b] for a in (False, True) for b in (False, True)])
     out, count = reference_eval(p, X)
     assert count == p.cost_per_case() * 4
@@ -116,3 +118,57 @@ def test_runner_charges_exact_costs_and_stops_at_budget(arm, task, monkeypatch):
     # Validation is logged separately and never charged.
     if task["kind"] == "comp":
         assert final["val_units"] > 0
+
+
+def _inline(p):
+    """Build the equivalent plain tree (codes in the same architecture) by
+    textual inlining of every ADF call."""
+    arch = p.arch
+
+    def expand(b, i, args):
+        """Return (codes, vals, next_index) for the subtree at position i of
+        branch b, with ARG references replaced by `args` (lists of codes/vals)."""
+        code = p.codes[b][i]
+        s = arch.symbols[code]
+        if s.kind.name == "ARG":
+            c, v = args[s.ref]
+            return list(c), list(v), i + 1
+        if s.arity == 0:
+            return [code], [p.vals[b][i]], i + 1
+        j = i + 1
+        kids = []
+        for _ in range(s.arity):
+            c, v, j = expand(b, j, args)
+            kids.append((c, v))
+        if s.kind.name == "PRIM":
+            return [code] + sum((k[0] for k in kids), []), [0.0] + sum((k[1] for k in kids), []), j
+        c, v, _ = expand(s.ref + 1, 0, kids)
+        return c, v, j
+
+    c, v, _ = expand(0, 0, ())
+    return TreeProgram(arch, [c] + [list(x) for x in p.codes[1:]], [v] + [list(x) for x in p.vals[1:]]), c
+
+
+def test_expanded_size_and_depth_equal_explicit_inlining():
+    from conftest import ARMS
+
+    for name, arm in ARMS:
+        if not arm.arch.adf_arities:
+            continue
+        rng = np.random.default_rng(12)
+        X = data_for(arm, n=11)
+        pop = arm.init_population(40, rng)
+        for _ in range(3):
+            pop = [arm.vary([pop[i], pop[(i + 5) % 40]], rng) for i in range(40)]
+        for p in pop:
+            q, codes = _inline(p)
+            assert not any(arm.arch.symbols[c].kind.name == "CALL" for c in codes)
+            assert p.expanded_size() == len(codes)
+            out_p, out_q = p.evaluate(X), q.evaluate(X)
+            if arm.arch.pset.dtype is bool:
+                assert np.array_equal(out_p, out_q)
+            else:
+                np.testing.assert_allclose(out_p, out_q, rtol=1e-9, atol=1e-12, equal_nan=True)
+            assert q.depth() == p.depth()
+            # the inlined tree has no calls, so its cost equals its size
+            assert q.expanded_size() == q.cost_per_case() == p.expanded_size()

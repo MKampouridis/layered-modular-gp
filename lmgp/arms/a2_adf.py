@@ -8,8 +8,11 @@ not checked against the book and are set in config. The result-producing branch 
 the inputs and may call every ADF.
 
 Every ADF call is charged in full (call node + arguments + body), even when
-two calls receive identical arguments: no caching, so ADFs get no discount
-that plain trees could not also get.
+two calls receive identical arguments; there is no memoisation of calls.
+Arguments are passed by value (each argument subtree runs once per call), so
+an ADF program can cost less per case than its inlined equivalent: that is
+the reuse benefit under test. The size cap applies to the inlined size
+(`expanded_size`), the same quantity for every arm.
 """
 from __future__ import annotations
 

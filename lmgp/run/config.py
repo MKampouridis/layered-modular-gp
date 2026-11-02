@@ -95,6 +95,8 @@ def task_label(task: dict) -> str:
 def run_id(cfg: dict) -> str:
     """Readable, unique id: arm, task, budget, seed plus a short hash of the
     full config."""
+    if cfg.get("pop_size") == "auto":
+        cfg = {**cfg, "pop_size": population_for_budget(cfg["budget"])}
     h = hashlib.sha1(json.dumps(cfg, sort_keys=True, default=str).encode()).hexdigest()[:8]
     b = "inf" if cfg.get("budget") is None else f"{float(cfg['budget']):.0e}".replace("+", "")
     return f"{cfg['arm']}__{task_label(cfg['task'])}__b{b}__s{cfg['seed_index']:03d}__{h}"

@@ -62,25 +62,39 @@ class TreeArm:
         return TreeProgram(self.arch, codes, vals)
 
     def init_population(self, n: int, rng) -> list[TreeProgram]:
-        """Ramped half-and-half over depths init_depth[0]..init_depth[1],
-        rejecting duplicates and invalid programs (up to 20 tries each)."""
+        """Ramped half-and-half over depths init_depth[0]..init_depth[1].
+
+        Each slot tries 20 times at its (depth, method) to get a valid,
+        non-duplicate program; if that fails (e.g. ADF programs whose inlined
+        size breaks the cap at large depth) the depth is lowered by one and
+        the method kept, down to depth 1. Only then is a duplicate accepted.
+        The same rule applies to every arm; `init_stats` records how often
+        the depth had to be lowered."""
         lo, hi = self.cfg.init_depth
         depths = list(range(lo, hi + 1))
         pop: list[TreeProgram] = []
         seen: set = set()
+        lowered = dup = 0
         for i in range(n):
             depth = depths[i % len(depths)]
             method = "full" if (i // len(depths)) % 2 == 0 else "grow"
-            for attempt in range(20):
-                p = self.random_program(depth, method, rng)
-                if self.is_valid(p) and p.key() not in seen:
+            chosen = None
+            for d in range(depth, 0, -1):
+                for _ in range(20):
+                    p = self.random_program(d, method, rng)
+                    if self.is_valid(p) and p.key() not in seen:
+                        chosen = p
+                        break
+                if chosen is not None:
+                    lowered += d < depth
                     break
-            else:
-                # fall back to a valid (possibly duplicate) program
-                while not self.is_valid(p):
-                    p = self.random_program(lo, "grow", rng)
-            seen.add(p.key())
-            pop.append(p)
+            if chosen is None:
+                dup += 1
+                while chosen is None or not self.is_valid(chosen):
+                    chosen = self.random_program(1, method, rng)
+            seen.add(chosen.key())
+            pop.append(chosen)
+        self.init_stats = {"init_depth_lowered": lowered, "init_duplicates": dup}
         return pop
 
     # ---- variation ---------------------------------------------------------

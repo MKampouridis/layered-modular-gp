@@ -111,12 +111,17 @@ def versions() -> dict:
         except Exception:
             return None
 
-    import scipy  # noqa: F401
+    from importlib.metadata import PackageNotFoundError, version
+
+    def ver(pkg):
+        try:
+            return version(pkg)
+        except PackageNotFoundError:
+            return None
 
     return {
         "python": platform.python_version(),
-        "numpy": np.__version__,
-        "pandas": pd.__version__,
+        **{pkg: ver(pkg) for pkg in ("numpy", "pandas", "scipy", "pyarrow", "pyyaml", "pmlb")},
         "platform": platform.platform(),
         "git_commit": git("rev-parse", "HEAD"),
         "git_dirty": bool(git("status", "--porcelain")),
@@ -167,6 +172,8 @@ class Run:
             gen = 0
             pop = arm.init_population(cfg["pop_size"], rng)
             pop, errs, fits, scal = self._evaluate(pop, counter, S, gen)
+            if not pop:
+                raise ValueError(f"budget {cfg['budget']} cannot pay for a single program evaluation")
             self._log(log, gen, pop, fits, scal, counter, S)
 
         N = cfg["pop_size"]
@@ -257,6 +264,7 @@ class Run:
             "generations": gen, "units": counter.units, "evals": counter.evals,
             "val_units": counter.val_units, "val_evals": counter.val_evals, "wall": counter.wall,
             "best_train": S["best_fit"],
+            **getattr(self.arm, "init_stats", {}),
         }
         if self.kind == "boolean":
             p = S["best_prog"]

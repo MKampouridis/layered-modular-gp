@@ -7,15 +7,26 @@ symbol codes plus a parallel tuple of constant values (used only by ERC
 nodes).
 
 Compute accounting (see `lmgp.core.counter`): one unit per node executed per
-training case. For these arms nothing is cached, so the cost per case of a
-program is the number of node executions in one evaluation:
+training case. The cost per case of a program is the number of node
+executions in one evaluation:
 
 * a primitive, variable, constant or ADF-argument node costs 1;
-* an ADF call node costs 1, plus its argument subtrees (each evaluated once),
-  plus the full cost of the ADF body, charged afresh on every call.
+* an ADF call node costs 1, plus its argument subtrees, plus the full cost of
+  the ADF body, charged afresh on every call (even with identical arguments).
 
-`expanded_size` is defined to equal this cost, so the size cap and the compute
-counter use the same notion of program size.
+ADF arguments are passed by value: each argument subtree is executed once per
+call and every reference to it inside the body costs 1. This is genuine
+reuse of a computed value, the benefit modularity is meant to provide, and it
+is the same principle as charging a cached module output once per program
+evaluation (A5). It means an ADF program can cost less than the equivalent
+inlined tree.
+
+Size is measured separately from cost. `expanded_size` is the size of the
+equivalent plain tree with every ADF call inlined (the call node disappears,
+each ARG reference is replaced by a copy of the argument subtree, unused
+arguments vanish). The size cap uses `expanded_size`, so it means the same
+thing for every arm; `cost_per_case` is used only by the compute counter.
+For A1 the two coincide.
 """
 from __future__ import annotations
 
@@ -156,7 +167,34 @@ class TreeProgram:
         return self._branch_costs[0]
 
     def expanded_size(self) -> int:
-        return self._branch_costs[0]
+        return self._inlined_size
+
+    @cached_property
+    def _inlined_size(self) -> int:
+        memo: dict = {}
+
+        def branch_size(b: int, arg_sizes: tuple[int, ...]) -> int:
+            key = (b, arg_sizes)
+            if key in memo:
+                return memo[key]
+            kind, syms, arity = self.arch.kind, self.arch.symbols, self.arch.arity
+            stack: list[int] = []
+            for code in reversed(self.codes[b]):
+                k = kind[code]
+                if k == Kind.ARG:
+                    stack.append(arg_sizes[syms[code].ref])
+                elif k in (Kind.VAR, Kind.ERC):
+                    stack.append(1)
+                else:
+                    ch = tuple(stack.pop() for _ in range(arity[code]))
+                    if k == Kind.PRIM:
+                        stack.append(1 + sum(ch))
+                    else:
+                        stack.append(branch_size(syms[code].ref + 1, ch))
+            memo[key] = stack[0]
+            return stack[0]
+
+        return branch_size(0, ())
 
     def stored_size(self) -> int:
         return sum(len(c) for c in self.codes)
@@ -166,8 +204,9 @@ class TreeProgram:
 
     @cached_property
     def _depth(self) -> int:
-        """Depth with every ADF call inlined (ARG leaves replaced by the
-        argument subtrees). A lone terminal has depth 0."""
+        """Depth of the inlined tree (as for expanded_size: call nodes
+        disappear, ARG leaves are replaced by the argument subtrees). A lone
+        terminal has depth 0."""
         memo: dict = {}
 
         def branch_depth(b: int, arg_depths: tuple[int, ...]) -> int:
@@ -187,7 +226,7 @@ class TreeProgram:
                     if k == Kind.PRIM:
                         stack.append(1 + max(ch))
                     else:
-                        stack.append(1 + branch_depth(syms[code].ref + 1, ch))
+                        stack.append(branch_depth(syms[code].ref + 1, ch))
             memo[key] = stack[0]
             return stack[0]
 
