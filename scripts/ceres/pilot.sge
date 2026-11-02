@@ -1,0 +1,20 @@
+#!/bin/bash
+# The pilot timing on CERES: one array element per (arm, task, budget) measured, one core each.
+#
+#   mkdir -p logs
+#   python scripts/ceres/pilot_timing.py --list --max-measured 1e11   # number of pilot tasks, N (40)
+#   qsub -t 1-N -tc 60 scripts/ceres/pilot.sge
+#   # when all have finished:
+#   python scripts/ceres/pilot_timing.py --estimate-only --max-measured 1e11 --out results/pilot_ceres
+#$ -N lmgp-pilot
+#$ -S /bin/bash
+#$ -q all.q
+#$ -cwd
+#$ -j y
+#$ -o logs/
+set -eo pipefail
+case "${SGE_TASK_ID:-}" in ''|*[!0-9]*) echo "submit this as a job array (qsub -t ...)" >&2; exit 1 ;; esac
+source scripts/ceres/env.sh
+echo "$(date -u +%FT%TZ) $(hostname) $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2) pilot task $(( SGE_TASK_ID - 1 ))"
+python scripts/ceres/pilot_timing.py --out "${OUT:-results/pilot_ceres}" --max-measured 1e11 --task $(( SGE_TASK_ID - 1 ))
+echo "$(date -u +%FT%TZ) done"

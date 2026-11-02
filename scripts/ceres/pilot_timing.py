@@ -96,12 +96,29 @@ def main():
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--max-measured", type=float, default=1e10)
     ap.add_argument("--estimate-only", action="store_true")
+    ap.add_argument("--list", action="store_true", help="print the number of pilot tasks and exit")
+    ap.add_argument("--task", type=int, default=None, help="run one pilot task (SGE array element)")
     a = ap.parse_args()
     out = Path(a.out)
+    all_jobs = [(arm, t, b) for b in BUDGETS if b <= a.max_measured for arm in ARMS for t in TASKS]
+    if a.list:
+        print(len(all_jobs))
+        return
     out.mkdir(parents=True, exist_ok=True)
     f = out / "pilot_measured.parquet"
+    if a.task is not None:
+        r = one(*all_jobs[a.task])
+        print(r, flush=True)
+        pd.DataFrame([r]).to_parquet(out / f"pilot_task_{a.task:03d}.parquet", index=False)
+        return
+    parts = sorted(out.glob("pilot_task_*.parquet"))
+    if parts:  # merge the per-element results of a CERES array
+        merged = pd.concat([pd.read_parquet(x) for x in parts], ignore_index=True)
+        if f.exists():
+            merged = pd.concat([pd.read_parquet(f), merged], ignore_index=True)
+        merged.drop_duplicates(["arm", "task", "budget"], keep="last").to_parquet(f, index=False)
     if not a.estimate_only:
-        jobs = [(arm, t, b) for b in BUDGETS if b <= a.max_measured for arm in ARMS for t in TASKS]
+        jobs = list(all_jobs)
         done = pd.read_parquet(f) if f.exists() else pd.DataFrame()
         if len(done):
             have = set(zip(done.arm, done.task, done.budget))

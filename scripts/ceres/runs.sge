@@ -1,0 +1,26 @@
+#!/bin/bash
+# One element of an SGE job array: runs tasks (SGE_TASK_ID - 1) * COUNT .. + COUNT - 1 of a
+# batch config. Submit from the repository folder on the CERES login node:
+#
+#   mkdir -p logs
+#   python scripts/ceres/batch_tasks.py status configs/<batch>.yaml --count K   # prints the qsub line
+#   qsub -t 1-N -tc 60 -v CONFIG=configs/<batch>.yaml,COUNT=K,OUT=results/<batch> scripts/ceres/runs.sge
+#
+# CERES requires -tc (at most 60 elements of one array at once). all.q has no run-time limit;
+# its jobs may be suspended while a higher-priority queue is busy and then resume by themselves.
+# Finished runs are skipped, so a failed or stopped element is simply submitted again.
+#$ -N lmgp
+#$ -S /bin/bash
+#$ -q all.q
+#$ -cwd
+#$ -j y
+#$ -o logs/
+set -eo pipefail   # not -u: conda's activation scripts use unset variables
+: "${CONFIG:?give CONFIG with qsub -v}"
+case "${SGE_TASK_ID:-}" in ''|*[!0-9]*) echo "submit this as a job array (qsub -t ...)" >&2; exit 1 ;; esac
+source scripts/ceres/env.sh
+COUNT="${COUNT:-1}"
+INDEX=$(( (SGE_TASK_ID - 1) * COUNT ))
+echo "$(date -u +%FT%TZ) $(hostname) [numpy off: ${NPY_DISABLE_CPU_FEATURES:-none}] $CONFIG tasks $INDEX..$(( INDEX + COUNT - 1 ))"
+python scripts/ceres/batch_tasks.py run "$CONFIG" --index "$INDEX" --count "$COUNT" ${OUT:+--out "$OUT"}
+echo "$(date -u +%FT%TZ) done"
