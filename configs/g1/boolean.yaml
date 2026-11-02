@@ -1,0 +1,17 @@
+# G1 known-result check: tree GP (A1) versus tree GP + ADFs (A2) on Boolean tasks.
+# 30 runs per cell from the fixed seed list; runs stop at the first exact solution.
+base:
+  pop_size: 500
+  max_generations: 100
+  budget: null            # generation cap binds; compute used is recorded per run
+  selection: auto         # standard lexicase for Boolean tasks
+  arm_params:
+    max_size: 500
+    max_depth: 17
+grid:
+  arm: [a1, a2]
+  task:
+    - {kind: parity, n: 4}
+    - {kind: parity, n: 5}
+    - {kind: mux, k: 2}
+seeds: 30

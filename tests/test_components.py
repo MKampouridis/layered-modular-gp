@@ -95,3 +95,14 @@ def test_compositional_targets_nondegenerate():
         for R in range(1, 5):
             t = compositional_task(L, R, 0.0)
             assert np.std(t.y_train) > 0.3
+
+
+# ---- computational effort --------------------------------------------------------
+def test_koza_effort():
+    from lmgp.analysis.effort import effort
+
+    assert effort([5, 5, 5]) == 5
+    assert effort([100] * 5 + [None] * 5) == 700  # P = 0.5 -> R = 7
+    assert effort([None, None]) == float("inf")
+    # min over thresholds: 2 runs solved early, 8 late
+    assert effort([10, 10] + [100] * 8) == min(10 * 21, 100 * 1)

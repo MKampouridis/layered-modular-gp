@@ -16,8 +16,9 @@ from .task import Task
 
 CACHE = Path(__file__).resolve().parents[2] / "data" / "pmlb"
 
-# Small black-box subset used for the G1 sanity check (regression, few rows).
-G1_SUBSET = ("192_vineyard", "228_elusage", "1096_FacultySalaries", "523_analcatdata_neavote", "529_pollen")
+# Black-box subset for the G1 sanity check: small, non-linear (GP beats linear
+# regression in SRBench), with published gplearn and EPLEX results.
+G1_SUBSET = ("1027_ESL", "230_machine_cpu", "561_cpu", "556_analcatdata_apnea2", "227_cpu_small")
 
 
 def load_xy(name: str, cache: Path = CACHE):

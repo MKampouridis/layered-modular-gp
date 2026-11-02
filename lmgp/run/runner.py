@@ -37,7 +37,7 @@ from ..core.counter import ComputeCounter
 from ..core.rng import make_rng, seed_for
 from ..core.scaling import BIG, linear_scale, scaled_predictions
 from ..selection.lexicase import epsilon_lexicase_select, lexicase_select, tournament_select
-from .config import DEFAULTS, deep_merge, expand_batch, load_yaml, run_id
+from .config import DEFAULTS, deep_merge, expand_batch, load_yaml, population_for_budget, run_id
 
 
 # ---------------------------------------------------------------- building --
@@ -126,6 +126,8 @@ def versions() -> dict:
 class Run:
     def __init__(self, cfg: dict, out_dir: str | Path | None = None):
         self.cfg = deep_merge(DEFAULTS, cfg)
+        if self.cfg["pop_size"] == "auto":
+            self.cfg["pop_size"] = population_for_budget(self.cfg["budget"])
         self.seed = seed_for(self.cfg["seed_index"])
         self.task = build_task(self.cfg["task"], self.seed)
         self.arm = build_arm(self.cfg["arm"], self.task, self.cfg["arm_params"])

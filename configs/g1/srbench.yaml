@@ -1,0 +1,21 @@
+# G1 sanity check: tree GP (A1) on five SRBench black-box datasets.
+# SRBench capped each training run at 500,000 program evaluations; pop 1000 x 500
+# generations matches that. 10 runs per dataset (as SRBench), each with its own
+# 75/25 train/test split from the run seed; 25% of train is held out for validation.
+base:
+  arm: a1
+  pop_size: 1000
+  max_generations: 500
+  budget: null
+  selection: auto          # epsilon-lexicase (semi-dynamic, MAD) for regression
+  arm_params:
+    max_size: 500
+    max_depth: 17
+grid:
+  task:
+    - {kind: srbench, name: 1027_ESL}
+    - {kind: srbench, name: 230_machine_cpu}
+    - {kind: srbench, name: 561_cpu}
+    - {kind: srbench, name: 556_analcatdata_apnea2}
+    - {kind: srbench, name: 227_cpu_small}
+seeds: 10

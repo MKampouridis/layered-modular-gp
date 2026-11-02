@@ -26,6 +26,19 @@ DEFAULTS = {
 }
 
 
+# Population size grows with budget by one fixed rule for every arm: it
+# doubles with each tenfold budget increase, from POP_AT_B0 at budget B0. With
+# budgets ten times apart this lets both population and generation count grow.
+B0 = 1e8
+POP_AT_B0 = 250
+
+
+def population_for_budget(budget: float, b0: float = B0, p0: int = POP_AT_B0) -> int:
+    import math
+
+    return max(50, int(round(p0 * 2 ** math.log10(float(budget) / b0))))
+
+
 def deep_merge(base: dict, over: dict) -> dict:
     out = copy.deepcopy(base)
     for k, v in (over or {}).items():
