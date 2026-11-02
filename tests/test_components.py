@@ -106,3 +106,12 @@ def test_koza_effort():
     assert effort([None, None]) == float("inf")
     # min over thresholds: 2 runs solved early, 8 late
     assert effort([10, 10] + [100] * 8) == min(10 * 21, 100 * 1)
+
+
+def test_task_spec_replaced_not_merged():
+    from lmgp.run.config import expand_batch, run_id
+    from lmgp.run.runner import Run
+
+    runs = expand_batch({"grid": {"task": [{"kind": "mux", "k": 2}]}, "seeds": 1})
+    assert runs[0]["task"] == {"kind": "mux", "k": 2}
+    assert Run(runs[0]).id == run_id(runs[0])

@@ -39,10 +39,13 @@ def population_for_budget(budget: float, b0: float = B0, p0: int = POP_AT_B0) ->
     return max(50, int(round(p0 * 2 ** math.log10(float(budget) / b0))))
 
 
+ATOMIC = {"task"}  # replaced wholesale, never merged with the default
+
+
 def deep_merge(base: dict, over: dict) -> dict:
     out = copy.deepcopy(base)
     for k, v in (over or {}).items():
-        if isinstance(v, dict) and isinstance(out.get(k), dict):
+        if isinstance(v, dict) and isinstance(out.get(k), dict) and k not in ATOMIC:
             out[k] = deep_merge(out[k], v)
         else:
             out[k] = copy.deepcopy(v)
