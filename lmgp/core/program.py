@@ -171,30 +171,43 @@ class TreeProgram:
 
     @cached_property
     def _inlined_size(self) -> int:
-        memo: dict = {}
+        """Size of the fully inlined tree, computed in one pass per branch.
 
-        def branch_size(b: int, arg_sizes: tuple[int, ...]) -> int:
-            key = (b, arg_sizes)
-            if key in memo:
-                return memo[key]
-            kind, syms, arity = self.arch.kind, self.arch.symbols, self.arch.arity
-            stack: list[int] = []
+        The inlined size of an ADF body is affine in its arguments' sizes:
+        size = c + sum_i n_i * s_i, where n_i is how many times ARG i appears
+        after inlining. Each ADF is reduced to (c, n) once, in index order
+        (ADF k only calls j < k), and the forms compose at call sites. This
+        gives exactly the same number as textual inlining (tested)."""
+        kind, syms, arity = self.arch.kind, self.arch.symbols, self.arch.arity
+        forms: list[tuple[int, tuple[int, ...]]] = []  # per ADF: (c, n)
+
+        def reduce(b: int, n_args: int):
+            # Each stack entry is an affine form (const, coeffs over this branch's args).
+            zero = (0,) * n_args
+            stack: list = []
             for code in reversed(self.codes[b]):
                 k = kind[code]
                 if k == Kind.ARG:
-                    stack.append(arg_sizes[syms[code].ref])
+                    i = syms[code].ref
+                    stack.append((0, tuple(int(j == i) for j in range(n_args))))
                 elif k in (Kind.VAR, Kind.ERC):
-                    stack.append(1)
+                    stack.append((1, zero))
                 else:
-                    ch = tuple(stack.pop() for _ in range(arity[code]))
+                    ch = [stack.pop() for _ in range(arity[code])]
                     if k == Kind.PRIM:
-                        stack.append(1 + sum(ch))
+                        c = 1 + sum(x[0] for x in ch)
+                        n = tuple(map(sum, zip(*(x[1] for x in ch)))) if n_args else zero
+                        stack.append((c, n))
                     else:
-                        stack.append(branch_size(syms[code].ref + 1, ch))
-            memo[key] = stack[0]
+                        fc, fn = forms[syms[code].ref]
+                        c = fc + sum(m * x[0] for m, x in zip(fn, ch))
+                        n = tuple(sum(m * x[1][j] for m, x in zip(fn, ch)) for j in range(n_args))
+                        stack.append((c, n))
             return stack[0]
 
-        return branch_size(0, ())
+        for k, a in enumerate(self.arch.adf_arities):
+            forms.append(reduce(k + 1, a))
+        return reduce(0, 0)[0]
 
     def stored_size(self) -> int:
         return sum(len(c) for c in self.codes)
@@ -206,31 +219,51 @@ class TreeProgram:
     def _depth(self) -> int:
         """Depth of the inlined tree (as for expanded_size: call nodes
         disappear, ARG leaves are replaced by the argument subtrees). A lone
-        terminal has depth 0."""
-        memo: dict = {}
+        terminal has depth 0.
 
-        def branch_depth(b: int, arg_depths: tuple[int, ...]) -> int:
-            key = (b, arg_depths)
-            if key in memo:
-                return memo[key]
-            kind, syms, arity = self.arch.kind, self.arch.symbols, self.arch.arity
-            stack: list[int] = []
+        As for size, each ADF is reduced once to a max-plus form:
+        depth = max(c, max_i(d_i + o_i)), where o_i is the deepest position
+        of ARG i in the inlined body (None if ARG i is unused)."""
+        kind, syms, arity = self.arch.kind, self.arch.symbols, self.arch.arity
+        forms: list = []  # per ADF: (c, offsets)
+
+        def mx(a, b):
+            return b if a is None else a if b is None else max(a, b)
+
+        def reduce(b: int, n_args: int):
+            none = (None,) * n_args
+            stack: list = []
             for code in reversed(self.codes[b]):
                 k = kind[code]
                 if k == Kind.ARG:
-                    stack.append(arg_depths[syms[code].ref])
+                    i = syms[code].ref
+                    stack.append((None, tuple(0 if j == i else None for j in range(n_args))))
                 elif k in (Kind.VAR, Kind.ERC):
-                    stack.append(0)
+                    stack.append((0, none))
                 else:
-                    ch = tuple(stack.pop() for _ in range(arity[code]))
+                    ch = [stack.pop() for _ in range(arity[code])]
                     if k == Kind.PRIM:
-                        stack.append(1 + max(ch))
+                        c = None
+                        o = list(none)
+                        for xc, xo in ch:
+                            c = mx(c, None if xc is None else xc + 1)
+                            o = [mx(o[j], None if xo[j] is None else xo[j] + 1) for j in range(n_args)]
+                        stack.append((c, tuple(o)))
                     else:
-                        stack.append(branch_depth(syms[code].ref + 1, ch))
-            memo[key] = stack[0]
+                        fc, fo = forms[syms[code].ref]
+                        c, o = fc, list(none)
+                        for off, (xc, xo) in zip(fo, ch):
+                            if off is None:
+                                continue  # argument not used by the body
+                            c = mx(c, None if xc is None else xc + off)
+                            o = [mx(o[j], None if xo[j] is None else xo[j] + off) for j in range(n_args)]
+                        stack.append((c, tuple(o)))
             return stack[0]
 
-        return branch_depth(0, ())
+        for k, a in enumerate(self.arch.adf_arities):
+            forms.append(reduce(k + 1, a))
+        c, _ = reduce(0, 0)
+        return c
 
     def key(self) -> tuple:
         return (self.codes, self.vals)

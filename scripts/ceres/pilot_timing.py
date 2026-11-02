@@ -20,7 +20,7 @@ import argparse
 import math
 import sys
 import time
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import pandas as pd
@@ -109,8 +109,11 @@ def main():
         # Largest first so the long runs start early.
         jobs.sort(key=lambda j: -j[2])
         rows = [] if not len(done) else done.to_dict("records")
+        # Results are saved as each run finishes, so an interrupted pilot keeps them.
         with ProcessPoolExecutor(a.jobs) as ex:
-            for r in ex.map(one, *zip(*jobs)) if jobs else []:
+            futs = [ex.submit(one, *j) for j in jobs]
+            for fut in as_completed(futs):
+                r = fut.result()
                 rows.append(r)
                 print(r, flush=True)
                 pd.DataFrame(rows).to_parquet(f, index=False)

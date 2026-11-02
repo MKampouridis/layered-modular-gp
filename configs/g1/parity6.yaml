@@ -1,0 +1,15 @@
+# G1 follow-up: even-6 parity, same settings as boolean.yaml, to check that the
+# ADF advantage grows with problem size (Koza 1994 reports it growing with n).
+base:
+  pop_size: 500
+  max_generations: 100
+  budget: null
+  selection: auto
+  arm_params:
+    max_size: 500
+    max_depth: 17
+grid:
+  arm: [a1, a2]
+  task:
+    - {kind: parity, n: 6}
+seeds: 30
