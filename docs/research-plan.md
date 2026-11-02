@@ -34,6 +34,8 @@ Nine arms share one codebase, selection scheme, function set and evaluation coun
 | A5-frozen (ablation) | Random lower-level modules, frozen; only the top level evolves | Learned versus random features (H2) |
 | A1-size (control) | Tree GP allowed A5's expanded size | Capacity versus structure (H2) |
 
+WP0 found close precedents for both proposed arms (ADFs, module acquisition, ARL, DL'GP and embedded CGP for A5; CGP levels-back and Modular GP-GOMEA for A6). The contribution is therefore the compute-matched scaling test and its controls, not the representations. Two cheap additions are noted for WP2: A3 with levels-back 1 versus maximum (a skip ablation inside CGP), and an A6 variant with skips to raw inputs only.
+
 A5's variation operators are module mutation, rewiring a call, encapsulating a subtree as a new module, and deleting unused modules. All arms use epsilon-lexicase selection and linear scaling of outputs. For trading policies in Stage 3, A5 takes the team-and-graph form of Tangled Program Graphs ([Kelly & Heywood 2017](https://gpbib.cs.ucl.ac.uk/gp-html/Kelly_2017_EuroGP.html)).
 
 ## Benchmarks
@@ -121,7 +123,7 @@ The main risk is that hierarchy does not scale. Each risk has an early sign and 
 | Evaluation cost too high | Pilot run times at the top budget | Cache module outputs; use down-sampled lexicase; drop the top budget on Stage 2 |
 | Bugs that produce false curves | Known results not reproduced | G1 blocks all experiments until validation passes |
 | Finance noise hides any effect | Gain shrinks to zero along the signal-to-noise ladder | Report the noise threshold itself as the finance result |
-| Prior work on skips in GP | Found in the WP0 literature check | Reframe A6 as a test of an existing idea at scale |
+| Prior work on skips in GP | Confirmed in WP0 (`docs/lit-check.md`) | Applied: A6 is framed as a test of an existing idea at scale; A5's novelty rests on the compute-matched scaling study and the controls |
 
 ## Sources
 
@@ -132,4 +134,4 @@ The main risk is that hierarchy does not scale. Each risk has an early sign and 
 - [Helmuth & Kelly (2021), PSB2, GECCO](https://arxiv.org/abs/2106.06086)
 - [Romera-Paredes et al. (2024), FunSearch, Nature](https://www.nature.com/articles/s41586-023-06924-6)
 
-Koza's ADFs, Cartesian GP and lexicase selection are cited from memory. Web searches found no GP-specific work on skip connections; WP0 checks this properly.
+Koza's ADFs, Cartesian GP and lexicase selection are cited from memory. The WP0 literature check (`docs/lit-check.md`) found that skip-like connectivity is established in GP under other names (CGP levels-back, linear GP registers, Koza's result-producing branch, Modular GP-GOMEA), so A6 is framed as a controlled test of an existing idea at scale.
