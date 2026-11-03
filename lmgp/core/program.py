@@ -284,6 +284,24 @@ class TreeProgram:
     def stored_size(self) -> int:
         return sum(len(c) for c in self.codes)
 
+    @cached_property
+    def active_key(self) -> tuple:
+        """The live code only: the RPB and the ADFs it (transitively) calls,
+        without dead argument subtrees. Two programs with equal keys compute
+        the same function in the same way; they may differ in dead code."""
+        kind, syms = self.arch.kind, self.arch.symbols
+        live = self._live
+        called, todo, out = {0}, [0], {}
+        while todo:
+            b = todo.pop()
+            out[b] = tuple((c, v if kind[c] == Kind.ERC else 0.0)
+                           for c, v, lv in zip(self.codes[b], self.vals[b], live[b]) if lv)
+            for c, lv in zip(self.codes[b], live[b]):
+                if lv and kind[c] == Kind.CALL and syms[c].ref + 1 not in called:
+                    called.add(syms[c].ref + 1)
+                    todo.append(syms[c].ref + 1)
+        return tuple(sorted(out.items()))
+
 
     def depth(self) -> int:
         return self._depth

@@ -654,14 +654,18 @@ cases:
     p_macro: 0.929
     p_crossover: 0.022
     p_mutation: 0.049
-    n_trees: 30
+    n_trees: 20
+    input_trees: 10
+    window: 10
   tuning_config: 1
 - arm: a4
   arm_params:
     p_macro: 0.147
     p_crossover: 0.334
     p_mutation: 0.519
-    n_trees: 20
+    n_trees: 14
+    input_trees: 7
+    window: 7
   tuning_config: 2
 - arm: a4
   arm_params:
@@ -669,41 +673,53 @@ cases:
     p_crossover: 0.115
     p_mutation: 0.828
     n_trees: 10
+    input_trees: 5
+    window: 5
   tuning_config: 3
 - arm: a4
   arm_params:
     p_macro: 0.275
     p_crossover: 0.435
     p_mutation: 0.29
-    n_trees: 30
+    n_trees: 20
+    input_trees: 10
+    window: 10
   tuning_config: 4
 - arm: a4
   arm_params:
     p_macro: 0.61
     p_crossover: 0.143
     p_mutation: 0.246
-    n_trees: 30
+    n_trees: 20
+    input_trees: 10
+    window: 10
   tuning_config: 5
 - arm: a4
   arm_params:
     p_macro: 0.245
     p_crossover: 0.308
     p_mutation: 0.447
-    n_trees: 30
+    n_trees: 24
+    input_trees: 12
+    window: 12
   tuning_config: 6
 - arm: a4
   arm_params:
     p_macro: 0.107
     p_crossover: 0.533
     p_mutation: 0.361
-    n_trees: 10
+    n_trees: 14
+    input_trees: 7
+    window: 7
   tuning_config: 7
 - arm: a4
   arm_params:
     p_macro: 0.44
     p_crossover: 0.132
     p_mutation: 0.428
-    n_trees: 30
+    n_trees: 24
+    input_trees: 12
+    window: 12
   tuning_config: 8
 - arm: a4
   arm_params:
@@ -711,20 +727,26 @@ cases:
     p_crossover: 0.311
     p_mutation: 0.231
     n_trees: 10
+    input_trees: 5
+    window: 5
   tuning_config: 9
 - arm: a4
   arm_params:
     p_macro: 0.104
     p_crossover: 0.168
     p_mutation: 0.728
-    n_trees: 30
+    n_trees: 20
+    input_trees: 10
+    window: 10
   tuning_config: 10
 - arm: a4
   arm_params:
     p_macro: 0.622
     p_crossover: 0.362
     p_mutation: 0.016
-    n_trees: 20
+    n_trees: 14
+    input_trees: 7
+    window: 7
   tuning_config: 11
 - arm: a4
   arm_params:
@@ -732,13 +754,17 @@ cases:
     p_crossover: 0.095
     p_mutation: 0.72
     n_trees: 10
+    input_trees: 5
+    window: 5
   tuning_config: 12
 - arm: a4
   arm_params:
     p_macro: 0.536
     p_crossover: 0.167
     p_mutation: 0.297
-    n_trees: 30
+    n_trees: 20
+    input_trees: 10
+    window: 10
   tuning_config: 13
 - arm: a4
   arm_params:
@@ -746,13 +772,17 @@ cases:
     p_crossover: 0.019
     p_mutation: 0.675
     n_trees: 20
+    input_trees: 10
+    window: 10
   tuning_config: 14
 - arm: a4
   arm_params:
     p_macro: 0.671
     p_crossover: 0.176
     p_mutation: 0.153
-    n_trees: 30
+    n_trees: 24
+    input_trees: 12
+    window: 12
   tuning_config: 15
 - arm: a4
   arm_params:
@@ -760,27 +790,35 @@ cases:
     p_crossover: 0.081
     p_mutation: 0.544
     n_trees: 10
+    input_trees: 5
+    window: 5
   tuning_config: 16
 - arm: a4
   arm_params:
     p_macro: 0.966
     p_crossover: 0.011
     p_mutation: 0.022
-    n_trees: 30
+    n_trees: 24
+    input_trees: 12
+    window: 12
   tuning_config: 17
 - arm: a4
   arm_params:
     p_macro: 0.618
     p_crossover: 0.368
     p_mutation: 0.014
-    n_trees: 30
+    n_trees: 24
+    input_trees: 12
+    window: 12
   tuning_config: 18
 - arm: a4
   arm_params:
     p_macro: 0.415
     p_crossover: 0.566
     p_mutation: 0.019
-    n_trees: 20
+    n_trees: 14
+    input_trees: 7
+    window: 7
   tuning_config: 19
 - arm: a5
   arm_params: {}

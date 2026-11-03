@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from ..core.primitives import PrimitiveSet
+from .base import acceptable
 from ..core.program import Architecture, TreeProgram
 from ..core.tree_ops import generate, pick_node, replace_subtree, subtree_end
 
@@ -141,7 +142,7 @@ class TreeArm:
         use_xo = rng.random() < self.cfg.p_crossover
         for _ in range(self.cfg.max_tries):
             child = self.crossover(p1, p2, rng) if use_xo else self.mutate(p1, rng)
-            if self.is_valid(child):
+            if acceptable(self, child, parents):
                 return child
         return p1
 

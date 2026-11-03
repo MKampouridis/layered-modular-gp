@@ -107,9 +107,14 @@ def apply_model(prog, scaling, X):
 
 
 def mse(pred, y):
+    """Mean squared error with each case's absolute error capped at BIG and
+    non-finite errors set to BIG, exactly as in `fitness`. So a NaN or Inf
+    prediction is never better than a finite one (before, a finite MSE above
+    BIG ranked worse than NaN; pre-CERES review)."""
     with np.errstate(all="ignore"):
-        v = float(np.mean((y - pred) ** 2))
-    return v if np.isfinite(v) else BIG
+        err = np.abs(np.asarray(y, float) - np.broadcast_to(pred, np.shape(y)))
+        err = np.where(np.isfinite(err), np.minimum(err, BIG), BIG)
+        return float(np.mean(err ** 2))
 
 
 def r2(pred, y):
@@ -252,9 +257,12 @@ class Run:
             idx = self.select(E, np.asarray(fits), 2 * N, rng)
             children = [arm.vary([pop[idx[2 * i]], pop[idx[2 * i + 1]]], rng) for i in range(N)]
             children, cerrs, cfits, cscal = self._evaluate(children, counter, S, gen)
-            if len(children) < N:  # budget ran out mid-generation
+            if len(children) < N:  # budget ran out, or a solution stopped the run, mid-generation
                 if children:
-                    self._log(log, gen, children, cfits, cscal, counter, S, partial=True)
+                    # partial only when the budget cut the generation short
+                    self._log(log, gen, children, cfits, cscal, counter, S, partial=S["exhausted"])
+                else:
+                    gen -= 1  # nothing of this generation was evaluated
                 break
             pop, errs, fits, scal = children, cerrs, cfits, cscal
             self._log(log, gen, pop, fits, scal, counter, S)

@@ -89,6 +89,18 @@ class GraphProgram:
         return [int(a) for c, a in zip(self.codes[b], self.args[b]) if c == REF and a >= 0]
 
     @cached_property
+    def active_key(self) -> tuple:
+        """The active part only (output tree and reachable modules, with
+        their levels), module indices renumbered in order. Two programs with
+        equal keys compute the same function in the same way."""
+        act = self.active
+        rank = {k: i for i, k in enumerate(k for k in range(self.n_modules) if act[k])}
+
+        def body(b):
+            return tuple((c, rank[a] if c == REF and a >= 0 else a) for c, a in zip(self.codes[b], self.args[b]))
+        return (tuple((self.levels[k], body(k)) for k in rank), body(self.out))
+
+    @cached_property
     def active(self) -> tuple[bool, ...]:
         """Which modules are reachable from the output tree."""
         act = [False] * self.n_modules
@@ -145,7 +157,11 @@ class GraphProgram:
         """(size, depth) of each body when fully inlined; a module REF is
         replaced by the module's inlined tree and disappears itself."""
         res: list[tuple[int, int]] = []
+        act = self.active
         for b in range(self.out + 1):
+            if b < self.n_modules and not act[b]:
+                res.append((0, 0))  # inactive: never inlined; skipping it avoids
+                continue            # huge sizes over inactive CGP sub-DAGs
             stack: list[tuple[int, int]] = []
             codes, args = self.codes[b], self.args[b]
             for i in range(len(codes) - 1, -1, -1):

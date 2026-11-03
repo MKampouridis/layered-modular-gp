@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from ..core.graph import ERC, REF, GraphProgram, input_ref
+from .base import acceptable
 from ..core.primitives import PrimitiveSet
 
 
@@ -213,27 +214,35 @@ class HierArm:
         lo, hi = cfg.out_init_depth
         depths = list(range(lo, hi + 1))
         pop, seen = [], set()
-        lowered = dup = 0
+        lowered = to_grow = dup = 0
         for i in range(n):
             depth = depths[i % len(depths)]
             method = "full" if (i // len(depths)) % 2 == 0 else "grow"
             chosen = None
-            for d in range(depth, 0, -1):
-                for _ in range(20):
-                    p = self._random_program(d, method, rng, self.frozen)
-                    if self.is_valid(p) and p.key() not in seen:
-                        chosen = p
+            # Lower the output depth first; if "full" still fails (A4's module
+            # trees, whose window reads make full trees exceed the cap), fall
+            # back to "grow". Only then is a duplicate or a retry accepted.
+            for meth in ([method, "grow"] if method == "full" else [method]):
+                for d in range(depth, 0, -1):
+                    for _ in range(20):
+                        p = self._random_program(d, meth, rng, self.frozen)
+                        if self.is_valid(p) and p.key() not in seen:
+                            chosen = p
+                            break
+                    if chosen is not None:
+                        lowered += d < depth
+                        to_grow += meth != method
                         break
                 if chosen is not None:
-                    lowered += d < depth
                     break
             if chosen is None:
                 dup += 1
                 while chosen is None or not self.is_valid(chosen):
-                    chosen = self._random_program(1, method, rng, self.frozen)
+                    chosen = self._random_program(1, "grow", rng, self.frozen)
             seen.add(chosen.key())
             pop.append(chosen)
-        self.init_stats = {"init_depth_lowered": lowered, "init_duplicates": dup}
+        self.init_stats = {"init_depth_lowered": lowered, "init_full_to_grow": to_grow,
+                           "init_duplicates": dup}
         return pop
 
     def _draw_frozen(self, rng):
@@ -488,7 +497,7 @@ class HierArm:
                 child = self.encapsulate(p1, rng)
             else:
                 child = self.delete(p1, rng)
-            if self.is_valid(child):
+            if acceptable(self, child, parents):
                 return child
         return p1
 

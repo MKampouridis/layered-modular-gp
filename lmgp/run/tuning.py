@@ -57,7 +57,13 @@ def sample(arm: str, rng: np.random.Generator) -> dict:
         return {"rows": int(rng.choice(np.arange(2, 41, 2)))}
     if arm == "a4":
         p = _rates(rng, ["p_macro", "p_crossover", "p_mutation"])
-        p["n_trees"] = int(rng.choice([10, 20, 30]))
+        # Keep the published shape (20 trees: the first 10 read the inputs,
+        # window 10) in proportion: half the trees read the inputs and the
+        # window is half the trees. With input_trees and window fixed at 10,
+        # 10 trees had no second layer and 30 trees almost never initialised
+        # within the cap (pre-CERES review).
+        n = int(rng.choice([10, 14, 20, 24]))
+        p.update({"n_trees": n, "input_trees": n // 2, "window": n // 2})
         return p
     if arm in ("a5", "a6", "a6_inputs"):
         p = _rates(rng, ["p_crossover", "p_mutation", "p_rewire", "p_encapsulate", "p_delete"])

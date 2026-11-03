@@ -23,3 +23,19 @@ class Arm(Protocol):
     def is_valid(self, p: Program) -> bool: ...
 
     def describe(self) -> dict: ...
+
+
+def acceptable(arm, child, parents) -> bool:
+    """Shared offspring rule for every arm: within the caps, and different
+    from both parents in its active code. An offspring that changed only
+    dead code (an inactive module or tree, an unread ADF argument) or
+    nothing at all computes exactly what a parent computes, so evaluating
+    it would spend budget on no new information. It is retried like an
+    invalid offspring (max_tries, then the first parent is copied). CGP's
+    single-active mutation guarantees this by construction; without the rule
+    29-47% of A2, A4 and A6 offspring were such no-ops, against 0-6% for A1
+    and A3 (pre-CERES review, 3 Nov 2026)."""
+    if not arm.is_valid(child):
+        return False
+    k = child.active_key
+    return all(k != p.active_key for p in parents[:2])

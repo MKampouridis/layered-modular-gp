@@ -29,6 +29,7 @@ from functools import cached_property
 import numpy as np
 
 from ..core.graph import ERC, REF, GraphProgram, input_ref
+from .base import acceptable
 from ..core.primitives import PrimitiveSet
 
 
@@ -120,25 +121,31 @@ class CGPArm:
         return act
 
     def build(self, genes) -> CGPProgram:
+        """Phenotype: one module per grid node (body f(src, ...)), plus the
+        output tree. A source is a REF to a node module, an input REF (cost 1
+        per read), or, for a constant, an ERC leaf with the constant's value
+        (cost 1 per read, as a constant costs in every other arm). Constants
+        used to be cached level-0 modules, charged once however often read
+        (pre-CERES review, 3 Nov 2026)."""
         consts, funcs, conns, out = genes
-        nc = self.nc
 
-        def ref(s):
+        def leaf(s):  # (code, arg)
             if s[0] == "in":
-                return input_ref(s[1])
+                return REF, input_ref(s[1])
             if s[0] == "const":
-                return s[1]
-            return nc + s[1]
+                return ERC, consts[s[1]]
+            return REF, s[1]
 
-        levels = [0] * nc + [self.col(i) + 1 for i in range(self.n_nodes)]
-        codes = [[ERC] for _ in range(nc)]
-        args = [[consts[k]] for k in range(nc)]
+        levels = [self.col(i) + 1 for i in range(self.n_nodes)]
+        codes, args = [], []
         for i in range(self.n_nodes):
             ar = self.pset.functions[funcs[i]].arity
-            codes.append([funcs[i]] + [REF] * ar)
-            args.append([0] + [ref(s) for s in conns[i][:ar]])
-        codes.append([REF])
-        args.append([ref(out)])
+            lv = [leaf(src) for src in conns[i][:ar]]
+            codes.append([funcs[i]] + [c for c, _ in lv])
+            args.append([0] + [a for _, a in lv])
+        c, a = leaf(out)
+        codes.append([c])
+        args.append([a])
         return CGPProgram(self.pset, levels, codes, args, genes)
 
     # ---- arm interface ------------------------------------------------------------------
@@ -197,7 +204,7 @@ class CGPArm:
         p1 = parents[0]
         for _ in range(self.cfg.max_tries):
             child = self.mutate(p1, rng)
-            if self.is_valid(child):
+            if acceptable(self, child, parents):
                 return child
         return p1
 

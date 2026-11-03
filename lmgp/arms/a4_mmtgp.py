@@ -29,6 +29,7 @@ from dataclasses import dataclass, field, replace
 import numpy as np
 
 from ..core.graph import ERC, REF, GraphProgram, ReadoutGraph
+from .base import acceptable
 from ..core.primitives import PrimitiveSet
 from .hier import HierArm, HierArmConfig, _subtree_end
 
@@ -125,7 +126,7 @@ class A4Arm(HierArm):
                 child = self.crossover(p1, p2, rng)
             else:
                 child = self.mutate(p1, rng)
-            if self.is_valid(child):
+            if acceptable(self, child, parents):
                 return child
         return p1
 
