@@ -28,6 +28,8 @@ import pandas as pd
 
 from ..arms.a1_tree import make_a1
 from ..arms.a2_adf import make_a2
+from ..arms.a3_cgp import VARIANTS as CGP_VARIANTS
+from ..arms.a3_cgp import CGPConfig, make_a3
 from ..arms.a4_mmtgp import A4Config, make_a4
 from ..arms.hier import VARIANTS as HIER_VARIANTS
 from ..arms.hier import HierArmConfig, make_hier
@@ -73,6 +75,8 @@ def build_arm(name: str, task: Task, params: dict):
     if name in ("a1", "a2"):
         cfg = _make_cfg(TreeArmConfig, params)
         return make_a1(task.pset, cfg) if name == "a1" else make_a2(task.pset, cfg)
+    if name in CGP_VARIANTS:
+        return make_a3(name, task.pset, _make_cfg(CGPConfig, params))
     if name == "a4":
         return make_a4(task.pset, _make_cfg(A4Config, params))
     if name in HIER_VARIANTS:

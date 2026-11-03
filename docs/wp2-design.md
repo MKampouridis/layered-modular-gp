@@ -46,8 +46,8 @@ That keeps the compute counter identical by construction.
 | A6-inputs | as A5 | level l−1 and the raw inputs | output tree reads level L and the inputs |
 | **A4** | 20 trees, sliding window of 10, depth ≤ 2 each (the published MMTGP configuration) | trees x−10 … x−1; trees 0–9 also read the raw inputs, trees 10–19 do not | least-squares readout over all 20 trees (A4's own representation) **[flag]** |
 | **A3** | standard single-row CGP: 1 row, 100 nodes, levels-back = 100 (Miller's recommended default); each node is one primitive whose arguments are REFs | any earlier node or input | one output gene |
-| A3-lb1 | 4 rows × 25 columns, levels-back 1 | the previous column only (the first column reads the inputs): a strictly layered network | one output gene reading the last column |
-| A3-lbmax | same 4 × 25 grid, levels-back 25 | any earlier column or input | as above |
+| A3-lb1 | 10 rows × 6 columns, levels-back 1 | the previous column only (the first column reads the inputs): a strictly layered network | one output gene reading the last column. With levels-back 1, every active path crosses every column, so the column count is the depth and must respect the caps (6 levels give at most 127 expanded nodes) |
+| A3-lbmax | same 10 × 6 grid, levels-back 6 | any earlier column or input | as above |
 
 - **A5's module bodies:** grow trees, initial depth 1–2 and depth at most 4 per module. A single-REF module is a pass-through, so programs whose true structure has fewer than L levels stay expressible.
 - **A5 and A6 initialisation:** each level starts with 2–4 modules, drawn uniformly, plus a ramped output tree.

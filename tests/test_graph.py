@@ -227,3 +227,46 @@ def test_linear_readout_recovers_combination():
     a, w = linear_readout(F, y)
     assert np.isclose(a, 1.5, atol=1e-3) and np.allclose(w[:4], [2, -1, 0, 0.5], atol=1e-3) and w[4] == 0
     assert np.all(np.isfinite(scaled_predictions(F, a, w)))
+
+
+# ---- A3 (CGP) --------------------------------------------------------------------------------
+from lmgp.arms.a3_cgp import VARIANTS as CGP_VARIANTS  # noqa: E402
+from lmgp.arms.a3_cgp import make_a3  # noqa: E402
+
+
+@pytest.mark.parametrize("v", list(CGP_VARIANTS))
+@pytest.mark.parametrize("pname", list(PSETS))
+def test_cgp_valid_and_cost_matches_reference(v, pname):
+    arm = make_a3(v, PSETS[pname]())
+    X = data(arm.pset)
+    for p in bred(arm, n=40, gens=6):
+        assert arm.is_valid(p) and p.is_well_formed()
+        out, cnt = reference_eval_graph(p, X)
+        assert cnt == p.cost_per_case() * X.shape[0]  # only active nodes are executed and charged
+        if arm.pset.dtype is bool:
+            assert np.array_equal(out, p.evaluate(X))
+        else:
+            np.testing.assert_allclose(out, p.evaluate(X), rtol=1e-9, atol=1e-12, equal_nan=True)
+
+
+def test_cgp_single_active_mutation_changes_an_active_gene():
+    arm = make_a3("a3", regression_set(3))
+    rng = np.random.default_rng(1)
+    for p in arm.init_population(30, rng):
+        q = arm.mutate(p, rng)
+        # the active part of the genotype differs (the phenotype graph changed)
+        assert (q.codes, q.args) != (p.codes, p.args) or q.genes[3] != p.genes[3]
+
+
+def test_cgp_levels_back_one_is_strictly_layered():
+    arm = make_a3("a3_lb1", regression_set(3))
+    rows = arm.cfg.rows
+    for p in bred(arm, n=30, gens=5):
+        consts, funcs, conns, out = p.genes
+        assert out[0] == "node" and out[1] // rows == arm.cfg.cols - 1
+        for i in range(arm.n_nodes):
+            for s in conns[i]:
+                if i // rows == 0:
+                    assert s[0] in ("in", "const")
+                else:
+                    assert s[0] == "node" and s[1] // rows == i // rows - 1
