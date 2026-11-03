@@ -1,0 +1,186 @@
+# Progress
+
+## 3 November 2026 — G1 self-certified (gate waived); WP2 built; hand-over to the MacBook Pro
+
+**Hand-over state (read this first on the Pro).** All local runs on the Air were stopped at 07:40. Nothing is running. Code and docs are in git; `results/`, `data/` and Claude's project memory travel through Box with `scripts/handover.py` (see CLAUDE.md).
+
+### What changed since 2 November
+- **G1 gate waived by Michael**; G1 is self-certified on the criteria below. WP2 has started.
+- **Compute counter revised [flag].** One unit per node of the equivalent inlined tree that is actually executed, per case. Nodes that only pass a value on cost 0: A2's call and ARG nodes, and A3–A6's module REFs. ADF arguments are still passed by value, and a cached module output is charged once per evaluation. The independent review found that the old rule charged the modular arms 20–50% more than A1 for the same function, by a different amount per arm. A1 is unaffected; **A2's G1 Boolean numbers below were obtained under the old rule and must be re-run.**
+- **WP2 arms built** (`lmgp/core/graph.py`, `lmgp/arms/{hier,a4_mmtgp,a3_cgp}.py`): A3, A3-lb1, A3-lbmax, A4, A5, A6, A6-inputs, A5-copy, A5-frozen. The design and every decision are in `docs/wp2-design.md`. An independent review was done and its findings fixed (commit `a11a70f`).
+- **Tuning and screening campaigns** generated: `configs/wp2/tuning.yaml` (3,600 runs, 20 configurations × 9 arms × 4 tuning tasks × 5 seeds at 1e10), and `scripts/make_screening.py` (screening batch and the G2 test).
+- **CERES resolved**: SGE, set up as in llm-primitives-stgp. Scripts are in `scripts/ceres/`, and the instructions and commands are in `docs/CERES.md`.
+- 225 tests pass, including the hand-over tests.
+
+### Pilot (laptop, old counter, indicative only)
+Wall seconds per run (one seed; Boolean runs do not stop at a solution):
+
+| Task | A1 1e8 / 1e9 / 1e10 | A2 1e8 / 1e9 / 1e10 |
+| --- | --- | --- |
+| comp L2 R2 | 2.5 / 28.7 / 179 | 3.4 / 20.7 / 241 |
+| comp L4 R4 | 2.7 / 20.9 / 156 | 2.8 / 23.9 / 188 |
+| even-6 | 5.6 / 48.8 / 480 | 6.1 / 35.5 / **not finished** |
+| 11-mux | 0.7 / 5.1 / 34.5 | 1.7 / 6.1 / 44.2 |
+| SRBench 227_cpu_small | 8.3 / 46.4 / 179 | 6.6 / 24.2 / 140 |
+
+**Open problem: A2 on even-6 at 1e10.** The run had not finished after 7.3 hours; about 6 minutes was expected. A trace under the new counter (`scripts/trace_run.py`) shows:
+- A2 runs at about 900 evaluations/s and 2.3e6 units/s, and gets slower as it goes.
+- The population solves the task by generation 130 and keeps running to the budget, with mean expanded size about 325.
+- That projects to more than 1.2 h per run. A1 runs at 2.1e7 units/s.
+
+So under the new counter, A2 does far more evaluations per unit, because its call and ARG nodes no longer cost anything. Python's per-evaluation overhead then dominates. Why the old-counter run took over 7 hours is still unexplained. **First job on the Pro:** run `trace_run.py` to completion, profile it, and decide whether evaluation needs Numba (allowed when profiling shows the need). The pilot should then be repeated on CERES, not the laptop.
+
+### Next steps, in order
+1. Diagnose the slow A2 even-6 run (above).
+2. Re-run A2's G1 Boolean cells under the new counter: `mkdir -p results/g1_old_counter && mv results/g1/a2__parity4* results/g1/a2__parity5* results/g1/a2__mux6* results/g1_old_counter/`, then `.venv/bin/python scripts/run_local.py configs/g1/boolean.yaml --out results/g1 --jobs 8`, then `scripts/g1_report.py --boolean`.
+3. Run the even-6 G1 batch (`configs/g1/parity6.yaml`, not started), to check that the ADF advantage grows with n.
+4. Michael: run the CERES setup and the pilot array from `docs/CERES.md`. From its timings, decide whether the screening keeps the 1e11 budget; G2 needs only two winning budgets.
+5. Tuning campaign on CERES (`configs/wp2/tuning.yaml`), then `scripts/make_tuning.py report`, then `scripts/make_screening.py write`, then the screening, then the G2 test. Ask Michael at the G2 gate.
+
+## 2 November 2026 — G1 (WP0 + WP1) complete (gate later waived)
+
+### What changed
+
+- **WP0 literature check** is in `docs/lit-check.md`. The research plan now treats A6 as a test of an existing idea (skip connectivity in modular GP) at scale, and adds two WP2 baselines: A3 with levels-back 1 versus maximum, and A6 with skips to the inputs only.
+- **Shared core** (`lmgp/core`):
+  - program interface;
+  - vectorised NumPy evaluator;
+  - compute counter;
+  - linear scaling;
+  - seeded RNG streams from `configs/seeds.txt`;
+  - an independent scalar reference interpreter, used only by the tests.
+- **Selection**: standard lexicase, and epsilon-lexicase with semi-dynamic MAD epsilon.
+- **Arms A1 and A2**: one shared tree implementation (`lmgp/arms/tree.py`). A2 adds Koza-style ADFs: two of them, ADF0 with 2 arguments and ADF1 with 3, hierarchical.
+- **Benchmarks**:
+  - synthetic compositional regression (L, R, noise);
+  - even-n parity;
+  - k-multiplexer;
+  - SRBench loader via `pmlb`.
+- **Runner**:
+  - driven by YAML configs;
+  - Parquet logs per generation and per run;
+  - checkpoint and resume;
+  - package versions and git commit recorded with every run.
+- **Scripts**:
+  - local parallel batch runner (`scripts/run_local.py`);
+  - G1 report (`scripts/g1_report.py`);
+  - pilot timing and CPU-hour estimate (`scripts/ceres/pilot_timing.py`).
+- **Tests**: 71 tests, all passing (`pytest`).
+
+All G1 numbers below come from code at commit `0daf0b4`. They were run locally on Michael's MacBook Air (8 cores).
+
+### Decisions taken (scientific decisions delegated, 2 Nov)
+
+**Compute counter**
+- One unit is one node evaluated on one training case. A program's cost is `cost_per_case × n_train`.
+- Every ADF call is charged in full (call node + arguments + body), even with identical arguments. There is no memoisation in A1/A2.
+- ADF arguments are passed by value: each argument subtree runs once per call, however often the body reads it. An ADF program can therefore cost less per case than its inlined equivalent; that is the reuse effect under study. *Counter-semantics choice; decided, see below.*
+- Validation evaluations are not charged; they are logged separately (`val_units`).
+- A run stops as soon as the next program's evaluation would exceed the budget. The budget is never overshot (this is tested).
+
+**Size cap**
+- The cap is 500 expanded nodes and depth 17. Size and depth are measured on the fully inlined program, so the cap is the same quantity for every arm. *Fairness-relevant; decided, see below. It costs A2 noticeably.*
+
+**Population rule**
+- pop = 250 at B = 1e8 and doubles with each tenfold budget increase.
+- This gives 250, 500, 1000, 2000 and 4000 for budgets 1e8 to 1e12. The rule is the same for every arm.
+
+**Initialisation**
+- Ramped half-and-half over depths 2–6, rejecting duplicates and programs that break the cap.
+- A slot that fails 20 times at its depth tries one level lower, with the same method.
+- The step-down is logged (`init_depth_lowered`). A2 needs it for about 21% of slots; A1 almost never does.
+
+**Variation**
+- 90% subtree crossover (branch-typed) and 10% subtree mutation (grow, depth 0–4), with the 90/10 internal/leaf rule.
+- An invalid offspring is retried up to 10 times; after that the first parent is copied.
+
+**Selection and fitness**
+- Lexicase for Boolean tasks; epsilon-lexicase (semi-dynamic MAD) for regression.
+- Linear scaling on regression. Non-finite outputs get error 1e30.
+- There is no fitness caching for clones: every evaluation is charged.
+
+**Synthetic tasks**
+- Library of 6 two-argument sub-functions (g0–g5); d = 5 inputs on U[−2, 2]; units standardised.
+- 256 train, 256 validation and 2048 test cases.
+- Noise is added to train and validation only; test is noise-free.
+- Ground truth and sub-function definitions are stored with each task.
+
+**SRBench**
+- 75/25 train/test split per seed, as in SRBench.
+- 25% of train is held out for validation (champion selection), so GP fits on about 56% of rows against SRBench's 75%.
+- Training is capped at 10k rows.
+
+### G1 results
+
+**Validation suite: passes.** 71 tests, covering:
+- offspring validity;
+- size and depth caps;
+- determinism for a given seed;
+- checkpoint and resume;
+- cost equals the reference interpreter's node count, for random and bred programs of both arms;
+- identical programs cost the same;
+- repeated ADF calls charged in full;
+- `expanded_size` and depth equal an explicit textual inlining;
+- the runner charges exactly the sum of program costs and never exceeds the budget.
+
+*Caveat:* the criterion "a cached module output is charged once per program evaluation" has no counterpart in A1/A2, which have no module cache. That test will be added with A5 in WP2.
+
+**Boolean known results** (*A2 rows: old counter, superseded; see 3 November*). 30 runs per cell, pop 500, at most 100 generations, lexicase, stop at the first exact solution. Effort is Koza's minimum computational effort at z = 99%, with 95% bootstrap CIs.
+
+| Task | Arm | Solved | Effort (node-eval units) | Effort (individuals) | Median gen. to solution | Median solution size (expanded) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 6-mux | A1 | 30/30 | 2.15e7 [1.08e7, 2.39e7] | 5.5e3 | 6 | 41 |
+| 6-mux | A2 | 30/30 | 4.47e7 [4.19e7, 4.47e7] | 8.5e3 | 10 | 89 |
+| even-4 | A1 | 30/30 | 4.03e7 [2.35e7, 4.03e7] | 1.65e4 | 15 | 214 |
+| even-4 | A2 | 30/30 | 9.13e7 [3.43e7, 1.05e8] | 3.3e4 | 17.5 | 256 |
+| even-5 | A1 | 15/30 | 2.90e9 [1.88e9, 4.89e9] | 3.46e5 | 84 | 417 |
+| even-5 | A2 | 26/30 | 4.24e8 [2.00e8, 6.56e8] | 1.08e5 | 42.5 | 389 |
+
+- Tree GP solves 6-mux and even-4 parity in every run, at under 5e7 units. ✔
+- **ADFs reduce effort on even-5 parity**, by 6.8× in units and 3.2× in individuals, with non-overlapping CIs. ✔
+- They do **not** reduce effort on even-4 or 6-mux, where A1 needs only 6–15 generations. Koza (1994) reports the ADF advantage growing with parity order. With lexicase, even-4 is easy enough that A2's extra branches are pure overhead. (I have not checked Koza's exact even-3 and even-4 figures against the book.)
+- To confirm that the advantage grows with n, an even-6 batch (same settings) is queued after the pilot. Its results will be added here.
+- Before the review fixes, when the cap was on the uninlined cost, A2 on even-5 reached 29/30 at an effort of 1.3e8. Moving the cap to the inlined size (the correct, arm-neutral quantity) costs A2 about 3×, because hierarchical ADF calls inflate the inlined size quickly. A2 still clearly beats A1.
+
+**SRBench sanity check (A1).** 10 runs per dataset, pop 1000 × 500 generations = 500k evaluations (SRBench's cap). Values are median test R², compared with medians from the published SRBench black-box results.
+
+| Dataset | lmgp A1 | IQR | gplearn | EPLEX | AFP | Operon | Linear |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1027_ESL | 0.852 | 0.021 | 0.815 | 0.857 | 0.831 | 0.858 | 0.872 |
+| 227_cpu_small | 0.956 | 0.013 | 0.526 | 0.954 | 0.930 | 0.972 | 0.709 |
+| 230_machine_cpu | 0.780 | 0.124 | 0.716 | 0.815 | 0.832 | 0.685 | 0.802 |
+| 556_analcatdata_apnea2 | 0.836 | 0.058 | −0.075 | 0.882 | 0.907 | 0.857 | −0.001 |
+| 561_cpu | 0.965 | 0.022 | 0.928 | 0.927 | 0.937 | 0.993 | 0.856 |
+
+- Tree GP with epsilon-lexicase and linear scaling lands among the published GP methods on all five datasets. ✔
+  - It is above gplearn everywhere.
+  - It is within about 0.05 of EPLEX and AFP.
+  - It does this while fitting on fewer rows, because of the validation holdout.
+- Median expanded model size is 210–340 nodes.
+- Compute calibration: 500k evaluations cost 1.5e10–5.4e11 units on these datasets. The planned top budget of 1e12 is therefore a few times SRBench's budget. The pilot below gives timings.
+
+**Pilot timings and CPU-hour estimate.** *(Filled in when the pilot finishes; see `results/pilot/pilot_estimate.txt`.)*
+
+### Flagged decisions and open items
+
+*Decided rather than left open (Michael, 2 Nov: no need to wait on scientific or methodology matters). Flagged here because they touch the counter and fairness between arms:*
+
+- **By-value ADF arguments: kept.** An argument subtree is evaluated once per call, as in Koza's implementation, and any real interpreter would do the same. Re-evaluating it at every read would charge A2 as if it were inlined, removing the reuse benefit by construction.
+- **Size cap on the inlined size: kept.** It is the only reading of "expanded nodes" that is the same quantity for every arm. It costs A2 a lot on Boolean tasks, but a cap on stored size would let modular arms represent much larger functions than A1 under the same nominal cap. That would confound H1, and the plan already has A1-size for exactly this question.
+
+1. **CERES** (*resolved 3 November: see `docs/CERES.md`*). The original questions were:
+   ```
+   which sbatch qsub bsub condor_submit; sinfo --version
+   sinfo -o "%P %l %c %m"
+   sacctmgr show assoc user=$USER format=account,partition,qos
+   scontrol show config | grep -iE "MaxArraySize|MaxJobCount|MaxTime"
+   module avail 2>&1 | grep -iE "python|anaconda|conda|uv"
+   df -h $HOME /scratch 2>/dev/null
+   curl -sI https://github.com | head -1   # do nodes/login have internet (for pmlb)?
+   ```
+2. **A4's connectivity: checked in the authors' code** (the paper is paywalled); details in `docs/lit-check.md` §2.11.
+   - As published, a tree reads up to 10 earlier trees (a sliding window).
+   - Only the first 10 of the 20 trees see the raw inputs.
+   - Every tree feeds a ridge model at the output.
+   - So A4 is already partly A6-like. The paper must state that A6's additions are raw inputs at every level and unbounded lower-level reads.
+3. **Laptop timings.** The MacBook Air throttles under sustained load. Treat the CPU-hour estimate as indicative until the pilot is repeated on CERES as a single job.

@@ -102,3 +102,7 @@ docs/          research-plan.md, lit-check.md, progress.md
 - One run is (arm, task, budget, seed). Write per-generation logs and final metrics to Parquet.
 - Checkpoint long runs so they can resume.
 - Record Python and package versions with every batch of results.
+
+## Two Macs, one active at a time
+
+Michael works on a MacBook Air and a MacBook Pro. Git carries code and docs; `scripts/handover.py` carries `results/`, `data/` and Claude's project memory through Box (`handover_dir` in `config/paths.toml`, copied from `config/paths.example.toml`). Start a session with `.venv/bin/python scripts/handover.py pull` and end it with `... push`, after committing and pushing. Check `... status` first if unsure which Mac holds the project. Stop local runs before pushing.

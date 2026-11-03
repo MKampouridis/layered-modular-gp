@@ -1,0 +1,9 @@
+# Machine-specific paths for scripts/handover.py. Copy to config/paths.toml (git-ignored) and edit,
+# or point the LMGP_PATHS environment variable at another file.
+# A leading "~" is expanded; relative paths are relative to the repository root.
+
+data_dir = "data"         # downloaded benchmark data (PMLB cache); git-ignored
+results_dir = "results"   # run outputs; git-ignored
+
+# Hand-over folder between the two Macs (cloud-synced; transport only, never a working folder).
+# handover_dir = "~/Library/CloudStorage/Box-Box/myBox/Box files/Research/Experiments/layered-modular-gp-handover"
