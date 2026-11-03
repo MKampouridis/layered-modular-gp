@@ -191,3 +191,68 @@ def test_generation_count_at_budget_boundary():
     res = r.execute()
     evaluated = {row["gen"] for row in r.log}
     assert res["generations"] == max(evaluated)  # never a generation with no evaluation
+
+
+def test_partial_reports_with_no_results(tmp_path, monkeypatch):
+    scr = _script("make_screening")
+    res, n = _fake_screening(tmp_path, monkeypatch, scr, keep=0)
+    _, verdict = scr.g2(str(res), None, allow_partial=True)
+    assert verdict is None
+    tun = _script("make_tuning")
+    monkeypatch.setattr(tun, "OUT", tmp_path)
+    (tmp_path / "tuning.yaml").write_text(yaml.safe_dump(
+        {"base": {"budget": 1e6}, "cases": [{"arm": "a1", "tuning_config": 0}],
+         "grid": {"task": [{"kind": "parity", "n": 5}]}, "seeds": [100]}))
+    tun.report(str(tmp_path / "none"), allow_partial=True)
+    assert not (tmp_path / "tuned.yaml").exists()
+
+
+def test_finished_run_is_not_rerun_by_a_late_worker(tmp_path, monkeypatch):
+    """ChatGPT's second-review case: a queued worker reaches a run that
+    another job finished after the batch's initial check."""
+    from lmgp.run import runner
+
+    cfg = {"arm": "a1", "task": {"kind": "parity", "n": 3}, "pop_size": 20, "max_generations": 3}
+    first = runner.Run(cfg, tmp_path).execute()
+    calls = []
+    monkeypatch.setattr(runner.Run, "_execute", lambda self: calls.append(1))
+    again = runner.Run(cfg, tmp_path).execute()
+    assert not calls and again["run_id"] == first["run_id"] and again["units"] == first["units"]
+
+
+def test_racing_stale_lock_takeover_has_one_winner(tmp_path):
+    """ChatGPT's second-review case: two workers take over the same stale
+    lock at once. At most one may own it, and the loser never removes it."""
+    import threading
+    from lmgp.run.runner import LOCK_STALE_S, Run, RunLocked
+
+    cfg = {"arm": "a1", "task": {"kind": "parity", "n": 3}, "pop_size": 20, "max_generations": 3}
+    runs = [Run(cfg, tmp_path), Run(cfg, tmp_path)]
+    lock = runs[0].out / "RUNNING"
+    runs[0].out.mkdir(parents=True)
+    lock.write_text("dead job\n")
+    old = time.time() - LOCK_STALE_S - 10
+    os.utime(lock, (old, old))
+    barrier, won = threading.Barrier(2), []
+
+    def take(r):
+        barrier.wait()
+        try:
+            r._acquire_lock()
+            won.append(r)
+        except RunLocked:
+            pass
+
+    ts = [threading.Thread(target=take, args=(r,)) for r in runs]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    owners = [r for r in runs if getattr(r, "_lock", None) and r._lock_holder(lock) == r._token]
+    assert len(owners) == 1
+    loser = [r for r in runs if r not in owners][0]
+    if getattr(loser, "_lock", None):  # thought it won: its first heartbeat stops it
+        with pytest.raises(RunLocked):
+            loser._heartbeat()
+        loser._release_lock()
+    assert lock.exists()  # the loser did not remove the owner's lock
+    owners[0]._release_lock()
+    assert not lock.exists()

@@ -54,6 +54,11 @@ Not changed:
 - A4's readout is not covered by the reference interpreter; it has its own test.
 - `encapsulate` often yields a structural rather than a functional change. With rule 15, its true no-ops are now retried, and its rate is tuned.
 
+**ChatGPT's re-review** of `7b85581..a642c03` (Antigravity was out of usage). It confirmed every earlier finding fixed or justifiably kept, and the new mechanisms sound: the dead-argument masks against the call-by-need interpreter, cost ≤ expanded size, the shared offspring rule in every arm, CGP constants, the A4 readout, the Boolean G2 score, atomic writes and SGE indexing. It found three new defects, all fixed (commit after `5666744`):
+- **Taking over a stale lock was not exclusive**: two workers could both win it, and either could delete the other's lock. Now the lock holds a unique owner token; a takeover is an atomic replace confirmed by reading it back; each heartbeat checks the token, and a displaced owner stops; only the owner removes the lock. Temporary file names are unique per writer. Tested with two threads racing (20 of 20 runs: one winner).
+- **A queued worker could rerun a run that another job finished after the batch's initial check.** The completion check now happens again once the lock is held.
+- **`--allow-partial` reports crashed when no results existed yet.** Fixed (minor).
+
 A 150-generation drift check of all 11 arms after these changes: cost ≤ expanded size everywhere, no reference mismatches, no growth, and time per generation similar or lower. 243 tests pass.
 
 **G1 after these changes.** A1 is unchanged: every A1 node is live. Finding 15 changes A1's search too, so both arms were re-run on the Boolean tasks (code `f85d210`; table below). **ADFs cut even-5 effort by 23×** (1.33e8 against 3.09e9 units; 10× in individuals), and A2 now solves even-5 in 30 of 30 runs (A1: 16 of 30). The G1 known-result criterion holds. The SRBench check (A1) will be re-run on CERES.
@@ -61,7 +66,7 @@ A 150-generation drift check of all 11 arms after these changes: cost ≤ expand
 **Next**
 1. Michael: CERES setup, then the pilot array (`docs/CERES.md` §1–2). It measures speed only, so it can start now. Then the portability check (§ "Portability check").
 2. The even-6 G1 batch (`configs/g1/parity6.yaml`, 60 runs) and the SRBench G1 check (`configs/g1/srbench.yaml`) on CERES, as the first real batches through the pipeline.
-3. ChatGPT re-review of the changes since `7b85581`, before the tuning campaign.
+3. ~~Re-review of the changes since `7b85581`~~: done (ChatGPT, above).
 4. From the pilot timings: decide whether screening keeps the 1e11 budget, and whether A2 needs Numba (its cheap programs make wall time per unit about 10× A1's).
 5. The tuning campaign (`configs/wp2/tuning.yaml`, regenerated: 3,600 runs, 20 distinct configurations per arm, checkpointed), then `make_tuning.py report`, `make_screening.py write`, the screening, and the G2 test. Ask Michael at the G2 gate.
 

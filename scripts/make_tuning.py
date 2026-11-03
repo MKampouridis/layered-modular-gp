@@ -80,6 +80,9 @@ def report(results, allow_partial=False):
         if not allow_partial:
             raise SystemExit("incomplete tuning: tuned.yaml NOT written (finish the runs, "
                              "or use --allow-partial to only look at the ranking)")
+    if df.empty:
+        print("no results yet: nothing to rank")
+        return
     ranks = rank_configs(df)
     best = ranks.groupby("arm").head(1)
     print(best.to_string(index=False))

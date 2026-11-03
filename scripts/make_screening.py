@@ -106,6 +106,9 @@ def g2(results: str, arm: str | None, alpha=0.05, allow_partial=False):
         print(f"{len(missing)} planned runs of a1/{arm} missing, e.g.:\n  " + "\n  ".join(missing[:20]))
         if not allow_partial:
             raise SystemExit("incomplete screening: no G2 verdict (use --allow-partial to look anyway)")
+    if df.empty:
+        print(f"no results yet for a1/{arm}: G2 INCOMPLETE")
+        return pd.DataFrame(), None
     out, wins = [], {}
     for task, g in df.groupby("task"):
         ps, meds = [], []

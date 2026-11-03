@@ -160,8 +160,16 @@ class RunLocked(RuntimeError):
     """Another live process is running this run."""
 
 
+def _tmp_name(path: Path) -> Path:
+    """A temporary name unique to this writer, so two writers never share it."""
+    import socket
+    import uuid
+
+    return path.with_name(f"{path.name}.{socket.gethostname()}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")
+
+
 def _write_atomic(path: Path, write) -> None:
-    tmp = path.with_name(path.name + ".tmp")
+    tmp = _tmp_name(path)
     write(tmp)
     os.replace(tmp, path)
 
@@ -193,34 +201,77 @@ class Run:
         self.versions = versions()  # at the start: the code that actually runs
         lock = self._acquire_lock()
         try:
+            if lock is not None and (self.out / "final.parquet").exists():
+                # finished by another job after our caller checked: do not rerun
+                return json.loads((self.out / "final.json").read_text())
             return self._execute()
         finally:
             if lock is not None:
-                lock.unlink(missing_ok=True)
+                self._release_lock()
+
+    # ---- run lock -----------------------------------------------------------------
+    # RUNNING holds a unique owner token. A run starts only after owning it:
+    # created exclusively, or, if stale, taken over by an atomic replace and
+    # confirmed by reading it back. Every heartbeat (each generation) checks
+    # the token; an owner whose lock was taken over stops (RunLocked), so two
+    # racing takeovers overlap by at most one generation. Only the owner
+    # removes the lock. Works on shared (NFS) filesystems, where flock is not
+    # reliable.
 
     def _acquire_lock(self):
         if not self.out:
             return None
         import socket
         import time
+        import uuid
 
         self.out.mkdir(parents=True, exist_ok=True)
         lock = self.out / "RUNNING"
-        me = f"{socket.gethostname()} pid {os.getpid()} job {os.environ.get('JOB_ID', '-')}" \
-             f".{os.environ.get('SGE_TASK_ID', '-')}"
+        token = (f"{uuid.uuid4().hex} {socket.gethostname()} pid {os.getpid()} "
+                 f"job {os.environ.get('JOB_ID', '-')}.{os.environ.get('SGE_TASK_ID', '-')}\n")
         try:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         except FileExistsError:
-            age = time.time() - lock.stat().st_mtime
+            try:
+                age = time.time() - lock.stat().st_mtime
+                holder = lock.read_text().strip()
+            except FileNotFoundError:  # released meanwhile: try once more from scratch
+                return self._acquire_lock()
             if age < LOCK_STALE_S:
-                raise RunLocked(f"{self.id} is running elsewhere ({lock.read_text().strip()}, "
-                                f"last seen {age:.0f}s ago)")
-            lock.write_text(me + "\n")  # stale: take it over
+                raise RunLocked(f"{self.id} is running elsewhere ({holder}, last seen {age:.0f}s ago)")
+            tmp = _tmp_name(lock)
+            tmp.write_text(token)
+            os.replace(tmp, lock)  # atomic takeover of a stale lock
+            time.sleep(0.5)  # let a racing taker's replace land, then confirm
+            if self._lock_holder(lock) != token:
+                raise RunLocked(f"{self.id}: lost a race to take over a stale lock")
         else:
-            os.write(fd, (me + "\n").encode())
+            os.write(fd, token.encode())
             os.close(fd)
-        self._lock = lock
+        self._lock, self._token = lock, token
         return lock
+
+    @staticmethod
+    def _lock_holder(lock):
+        try:
+            return lock.read_text()
+        except FileNotFoundError:
+            return None
+
+    def _heartbeat(self):
+        lock = getattr(self, "_lock", None)
+        if lock is None:
+            return
+        if self._lock_holder(lock) != self._token:
+            self._lock = None  # not ours any more: never touch or remove it
+            raise RunLocked(f"{self.id}: lock taken over by another job ({self._lock_holder(lock)}); stopping")
+        os.utime(lock)
+
+    def _release_lock(self):
+        lock = getattr(self, "_lock", None)
+        if lock is not None and self._lock_holder(lock) == self._token:
+            lock.unlink(missing_ok=True)
+        self._lock = None
 
     def _execute(self) -> dict:
         cfg, task, arm = self.cfg, self.task, self.arm
@@ -268,7 +319,7 @@ class Run:
             self._log(log, gen, pop, fits, scal, counter, S)
             if ck and cfg["checkpoint_every"] and gen % cfg["checkpoint_every"] == 0:
                 ck.parent.mkdir(parents=True, exist_ok=True)
-                tmp = ck.with_suffix(".tmp")
+                tmp = _tmp_name(ck)
                 tmp.write_bytes(pickle.dumps({
                     "rng": rng.bit_generator.state, "counter": counter.state(), "gen": gen, "pop": pop,
                     "errs": errs, "fits": fits, "scal": scal, "S": S, "log": log,
@@ -326,9 +377,7 @@ class Run:
         return out_p, out_e, out_f, out_s
 
     def _log(self, log, gen, pop, fits, scal, counter, S, partial=False):
-        lock = getattr(self, "_lock", None)
-        if lock is not None:
-            os.utime(lock)  # heartbeat
+        self._heartbeat()
         sizes = np.array([p.expanded_size() for p in pop])
         stored = np.array([p.stored_size() for p in pop])
         depths = np.array([p.depth() for p in pop])
