@@ -214,7 +214,25 @@ class TreeProgram:
 
         for k, a in enumerate(self.arch.adf_arities):
             forms.append(reduce(k + 1, a))
-        return reduce(0, 0)[0]
+        # The RPB has no arguments, so its forms are plain integers: a fast
+        # path (the RPB holds most of the nodes; this is the hot loop).
+        stack: list[int] = []
+        for code in reversed(self.codes[0]):
+            k = kind[code]
+            if k == Kind.VAR or k == Kind.ERC:
+                stack.append(1)
+            elif k == Kind.PRIM:
+                c = 1
+                for _ in range(arity[code]):
+                    c += stack.pop()
+                stack.append(c)
+            else:
+                fc, fn = forms[syms[code].ref]
+                c = fc
+                for m in fn:
+                    c += m * stack.pop()
+                stack.append(c)
+        return stack[0]
 
     def stored_size(self) -> int:
         return sum(len(c) for c in self.codes)
@@ -278,8 +296,26 @@ class TreeProgram:
 
         for k, a in enumerate(self.arch.adf_arities):
             forms.append(reduce(k + 1, a))
-        c, _ = reduce(0, 0)
-        return c
+        # Integer fast path for the RPB (no arguments), as for the size.
+        stack: list[int] = []
+        for code in reversed(self.codes[0]):
+            k = kind[code]
+            if k == Kind.VAR or k == Kind.ERC:
+                stack.append(0)
+            elif k == Kind.PRIM:
+                d = 0
+                for _ in range(arity[code]):
+                    d = max(d, stack.pop())
+                stack.append(d + 1)
+            else:
+                fc, fo = forms[syms[code].ref]
+                d = fc
+                for off in fo:
+                    x = stack.pop()
+                    if off is not None and x + off > (-1 if d is None else d):
+                        d = x + off
+                stack.append(d)
+        return stack[0]
 
     def key(self) -> tuple:
         return (self.codes, self.vals)
