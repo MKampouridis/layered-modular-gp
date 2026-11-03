@@ -159,8 +159,7 @@ class HierArm:
 
     # ---- validity ----------------------------------------------------------------------
     def is_valid(self, p: GraphProgram) -> bool:
-        if (p.expanded_size() > self.cfg.max_size or p.functional_size() > self.cfg.max_size
-                or p.depth() > self.cfg.max_depth):
+        if p.expanded_size() > self.cfg.max_size or p.depth() > self.cfg.max_depth:
             return False
         if not p.is_well_formed():
             return False
@@ -505,8 +504,11 @@ VARIANTS = {
     "a6": {"connectivity": "dense"},
     "a6_inputs": {"connectivity": "inputs"},
     # Private copies: the per-level module limit is lifted (the expanded-size cap,
-    # identical for every arm, is what bounds the program).
-    "a5_copy": {"cached": False, "private_copies": True, "max_modules": 64},
+    # identical for every arm, is what bounds the program). Private copies are
+    # disjoint subtrees of the expanded tree, so a level can never hold more
+    # modules than the cap allows nodes: 500 can never bind (64 did; fixed in
+    # the pre-CERES review, 3 Nov 2026).
+    "a5_copy": {"cached": False, "private_copies": True, "max_modules": 500},
     "a5_frozen": {"frozen_below": True},
 }
 

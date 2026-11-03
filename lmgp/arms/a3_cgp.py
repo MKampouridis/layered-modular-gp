@@ -16,8 +16,10 @@ No crossover, as is standard for CGP. Selection is the shared lexicase loop
 differs between arms).
 
 The phenotype is a `GraphProgram`: each node is a module with body
-f(REF, ..., REF) (cost 1 + arity per case when active), each constant a
-module with body ERC (cost 1), and the output tree a single REF (cost 1).
+f(REF, ..., REF), each constant a module with body ERC, and the output tree a
+single REF. Under the shared counter a module REF only passes a value on and
+costs 0, so an active node costs 1 per case (its function), a constant 1, and
+the output REF 0; a REF to a raw input is an input read and costs 1.
 """
 from __future__ import annotations
 
@@ -141,8 +143,7 @@ class CGPArm:
 
     # ---- arm interface ------------------------------------------------------------------
     def is_valid(self, p) -> bool:
-        return (p.expanded_size() <= self.cfg.max_size and p.functional_size() <= self.cfg.max_size
-                and p.depth() <= self.cfg.max_depth)
+        return p.expanded_size() <= self.cfg.max_size and p.depth() <= self.cfg.max_depth
 
     def init_population(self, n, rng):
         pop, seen, retries = [], set(), 0

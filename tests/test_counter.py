@@ -69,10 +69,11 @@ def test_by_value_argument_read_twice_is_computed_once():
     arm = make_a2(parity_set(2), TreeArmConfig(), adf_arities=(2, 3))
     # RPB = ADF0(and(x0, x1), x0); ADF0 = or(ARG0, ARG0)
     p = _prog(arm, [["ADF0", "and", "x0", "x1", "x0"], ["or", "ARG0", "ARG0"], ["ARG2"]])
-    # args: and(x0, x1) = 3 and x0 = 1, each executed once; body: or = 1 -> 5
-    assert p.cost_per_case() == 5
+    # ARG0 = and(x0, x1) = 3, executed once though read twice; ARG1 = x0 is
+    # never read, so it is dead and free; body: or = 1 -> 4
+    assert p.cost_per_case() == 4
     assert p.expanded_size() == 7  # or(and(x0, x1), and(x0, x1))
-    assert reference_eval(p, np.array([[True, False]]))[1] == 5
+    assert reference_eval(p, np.array([[True, False]]))[1] == 4
 
 
 def test_hierarchical_adf_cost_and_depth():
@@ -185,25 +186,44 @@ def test_expanded_size_and_depth_equal_explicit_inlining():
             assert q.expanded_size() == q.cost_per_case() == p.expanded_size()
 
 
-def test_code_in_unread_adf_argument_counts_against_the_cap():
-    """Regression (3 Nov 2026): an argument the ADF body never reads has no
-    inlined size but is still evaluated and charged. Without the stored-size
-    check such code bloated without limit (A2 on even-6 reached 23k nodes)."""
-    arm = make_a2(parity_set(2), TreeArmConfig(max_size=12), adf_arities=(2, 3))
-    # RPB = ADF1(x0, x1, big); ADF1 = ARG1, so `big` is never read
-    big = ["and"] * 5 + ["x0"] * 6
-    p = _prog(arm, [["ADF1", "x0", "x1", *big], ["or", "ARG0", "ARG1"], ["ARG1"]])
-    assert p.expanded_size() == 1  # inlines to x1
-    assert p.cost_per_case() == 2 + len(big)  # but every argument is executed and charged
-    assert p.functional_size() == 2 + len(big) + 1  # ADF1 = ARG1 has no functional node
-    assert not arm.is_valid(p)
-
-
-def test_functional_size_never_binds_without_hidden_code():
-    """With every ADF called and every argument read, functional size is at
-    most expanded size, so the extra check cannot bind (and for A1 they are equal)."""
+def test_unread_adf_argument_is_neither_executed_nor_charged():
+    """Dead-argument rule (3 Nov 2026): an argument the ADF body never reads,
+    even through nested calls, cannot reach the output, so it is neither
+    executed nor charged (as inactive modules in A3-A6). Before, such code was
+    charged on every call, leaving A2's cost unbounded by the cap."""
     arm = make_a2(parity_set(2), TreeArmConfig(), adf_arities=(2, 3))
-    p = _prog(arm, [["and", "ADF0", "x0", "x1", "ADF1", "x0", "x1", "x1"], ["or", "ARG0", "ARG1"],
-                    ["nand", "ADF0", "ARG0", "ARG1", "ARG2"]])
-    # RPB: and + 5 leaves; ADF0: or; ADF1: nand. Inlined: and(or(x0, x1), nand(or(x0, x1), x1))
-    assert p.functional_size() == 8 and p.expanded_size() == 9
+    big = ["and"] * 5 + ["x0"] * 6
+    # RPB = ADF1(x0, x1, big); ADF1 = ARG1, so neither x0 nor `big` is read
+    p = _prog(arm, [["ADF1", "x0", "x1", *big], ["or", "ARG0", "ARG1"], ["ARG1"]])
+    assert p.expanded_size() == 1 and p.cost_per_case() == 1  # just x1
+    X = np.array([[True, False], [False, True]])
+    out, count = reference_eval(p, X)
+    assert count == 2 and np.array_equal(out, p.evaluate(X)) and np.array_equal(out, X[:, 1])
+
+
+def test_reviewer_worst_case_cost_bounded_by_expanded_size():
+    """The independent review's case: ADF0(a, b) = a; ADF1(a, b, c) =
+    ADF0(a, <large subtree of b, c>); the RPB sums many ADF1 calls. Under the
+    old rule it cost 12,991/case at expanded size 127; now dead arguments
+    (transitively, through ADF0) are free, so cost <= expanded size."""
+    arm = make_a2(parity_set(2), TreeArmConfig(), adf_arities=(2, 3))
+    blob = ["and"] * 31 + ["ARG1", "ARG2"] * 16  # 63-node subtree of b and c
+    adf1 = ["ADF0", "ARG0", *blob]
+    rpb = ["or"] * 7 + ["ADF1", "x0", "x1", "x0"] * 8
+    p = _prog(arm, [rpb, ["ARG0"], adf1])
+    assert p.expanded_size() == 7 + 8  # or-tree over eight copies of x0
+    assert p.cost_per_case() == p.expanded_size()
+    assert p._used_args == ((True, False), (True, False, False))
+    X = np.array([[True, False], [False, True], [True, True]])
+    out, count = reference_eval(p, X)
+    assert count == p.cost_per_case() * len(X) and np.array_equal(out, p.evaluate(X))
+
+
+def test_a2_stored_size_bound():
+    """Dead code is free but still stored; its length is bounded by
+    max_stored (an engineering bound on genotype length)."""
+    arm = make_a2(parity_set(2), TreeArmConfig(max_stored=20), adf_arities=(2, 3))
+    big = ["and"] * 7 + ["x0"] * 8
+    p = _prog(arm, [["ADF1", "x0", "x1", *big], ["or", "ARG0", "ARG1"], ["ARG1"]])
+    assert p.stored_size() == 1 + 2 + len(big) + 3 + 1 > 20
+    assert p.expanded_size() == 1 and not arm.is_valid(p)

@@ -16,11 +16,16 @@ equivalent inlined tree that is executed, per training case. Concretely:
   identical arguments.
 
 ADF arguments are passed by value: each argument subtree is executed once per
-call, however often the body reads it. This is genuine reuse of a computed
+call, however often the body reads it. An argument the body never reads (after
+inlining, i.e. not even through nested calls) is dead code: it cannot reach the
+output, so it is neither executed nor charged, as inactive modules are not in
+A3-A6. (Added 3 Nov 2026: before, unread arguments were executed and charged,
+which left A2's cost unbounded by the size cap; see docs/progress.md.) This is genuine reuse of a computed
 value, the benefit modularity is meant to provide, and the same principle as
 charging a cached module output once per program evaluation (A3-A6). An ADF
 program whose arguments are each read once costs exactly as much as its
-inlined tree; reading an argument several times makes it cheaper.
+inlined tree; reading an argument several times makes it cheaper. Hence
+cost_per_case <= expanded_size always.
 (Changed 3 Nov 2026 from "call and ARG nodes cost 1" after the WP2
 independent review: see docs/progress.md.)
 
@@ -146,29 +151,63 @@ class TreeProgram:
 
     # ---- structure ---------------------------------------------------------
     @cached_property
+    def _used_args(self) -> tuple[tuple[bool, ...], ...]:
+        """Per ADF, which arguments its inlined body reads (n_i > 0)."""
+        return tuple(tuple(m > 0 for m in n) for _, n in self._size_forms)
+
+    @cached_property
+    def _live(self) -> tuple[tuple[bool, ...], ...]:
+        """Per branch, a mask over positions: False inside an argument
+        subtree of a call whose ADF never reads that argument (dead code)."""
+        kind, syms, arity = self.arch.kind, self.arch.symbols, self.arch.arity
+        used = self._used_args
+        masks = []
+        for codes in self.codes:
+            mask = [True] * len(codes)
+            pending: list[list[bool]] = []  # liveness of the remaining children, reversed
+            for i, code in enumerate(codes):
+                if pending:
+                    live = pending[-1].pop()
+                    if not pending[-1]:
+                        pending.pop()
+                else:
+                    live = True
+                mask[i] = live
+                a = arity[code]
+                if a:
+                    if kind[code] == Kind.CALL:
+                        flags = [live and u for u in used[syms[code].ref]]
+                    else:
+                        flags = [live] * a
+                    pending.append(flags[::-1])
+            masks.append(tuple(mask))
+        return tuple(masks)
+
+    @cached_property
     def _branch_costs(self) -> tuple[int, ...]:
-        """Cost per case of executing each branch once (RPB at index 0)."""
+        """Cost per case of executing each branch once (RPB at index 0):
+        live nodes only (see _live); CALL and ARG nodes cost 0."""
         kind, syms = self.arch.kind, self.arch.symbols
         K = len(self.arch.adf_arities)
-        adf_cost = [0] * K
-        # ADF k may only call ADF j < k, so compute in index order.
-        for k in range(K):
+        live = self._live
+
+        def branch_cost(b, adf_cost):
             c = 0
-            for code in self.codes[k + 1]:
+            for code, lv in zip(self.codes[b], live[b]):
+                if not lv:
+                    continue
                 kd = kind[code]
                 if kd == Kind.CALL:
                     c += adf_cost[syms[code].ref]
                 elif kd != Kind.ARG:
                     c += 1
-            adf_cost[k] = c
-        rpb = 0
-        for code in self.codes[0]:
-            kd = kind[code]
-            if kd == Kind.CALL:
-                rpb += adf_cost[syms[code].ref]
-            elif kd != Kind.ARG:
-                rpb += 1
-        return (rpb, *adf_cost)
+            return c
+
+        adf_cost = [0] * K
+        # ADF k may only call ADF j < k, so compute in index order.
+        for k in range(K):
+            adf_cost[k] = branch_cost(k + 1, adf_cost)
+        return (branch_cost(0, adf_cost), *adf_cost)
 
     def cost_per_case(self) -> int:
         return self._branch_costs[0]
@@ -178,6 +217,14 @@ class TreeProgram:
 
     @cached_property
     def _inlined_size(self) -> int:
+        return self._size_forms_and_rpb[1]
+
+    @cached_property
+    def _size_forms(self):
+        return self._size_forms_and_rpb[0]
+
+    @cached_property
+    def _size_forms_and_rpb(self):
         """Size of the fully inlined tree, computed in one pass per branch.
 
         The inlined size of an ADF body is affine in its arguments' sizes:
@@ -232,19 +279,11 @@ class TreeProgram:
                 for m in fn:
                     c += m * stack.pop()
                 stack.append(c)
-        return stack[0]
+        return tuple(forms), stack[0]
 
     def stored_size(self) -> int:
         return sum(len(c) for c in self.codes)
 
-    def functional_size(self) -> int:
-        """Stored nodes that compute something: every node in every branch
-        except CALL and ARG nodes, which only pass a value on. If every ADF
-        is called and every argument is read, this is at most expanded_size;
-        it exceeds it only through hidden code (an argument the body never
-        reads, or an ADF never called), which the size cap must also bound."""
-        kind = self.arch.kind
-        return sum(1 for c in self.codes for code in c if kind[code] not in (Kind.CALL, Kind.ARG))
 
     def depth(self) -> int:
         return self._depth
@@ -336,9 +375,12 @@ class TreeProgram:
 
     def _eval_branch(self, b, cols, args):
         kind, syms, arity = self.arch.kind, self.arch.symbols, self.arch.arity
-        codes, vals = self.codes[b], self.vals[b]
+        codes, vals, live = self.codes[b], self.vals[b], self._live[b]
+        used = self._used_args
         stack = []
         for i in range(len(codes) - 1, -1, -1):
+            if not live[i]:
+                continue  # inside an argument that is never read: dead code
             code = codes[i]
             k = kind[code]
             if k == Kind.VAR:
@@ -348,12 +390,13 @@ class TreeProgram:
             elif k == Kind.ERC:
                 stack.append(vals[i])
             else:
-                a = arity[code]
-                ch = [stack.pop() for _ in range(a)]
                 if k == Kind.PRIM:
+                    ch = [stack.pop() for _ in range(arity[code])]
                     stack.append(syms[code].ref(*ch))
                 else:
-                    stack.append(self._eval_branch(syms[code].ref + 1, cols, ch))
+                    r = syms[code].ref
+                    ch = [stack.pop() if u else None for u in used[r]]
+                    stack.append(self._eval_branch(r + 1, cols, ch))
         return stack[0]
 
     # ---- display -----------------------------------------------------------

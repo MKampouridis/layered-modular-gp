@@ -134,8 +134,7 @@ def test_offspring_valid_and_acyclic(harm):
         assert harm.is_valid(p)  # caps, levels, legal REFs, body depths
         assert p.is_well_formed()  # REFs point to earlier modules only: a DAG
         assert p.expanded_size() <= harm.cfg.max_size and p.depth() <= harm.cfg.max_depth
-        # every active module is read at least once, so the functional-size cap never binds here
-        assert p.functional_size() <= p.expanded_size()
+        assert p.cost_per_case() <= p.expanded_size()  # as for every arm
 
 
 @pytest.mark.parametrize("op", ["crossover", "mutate", "rewire", "encapsulate", "delete"])
@@ -214,8 +213,10 @@ def test_a4_valid_window_and_accounting(pname):
                 np.testing.assert_allclose(F[:, k], out, rtol=1e-9, atol=1e-12, equal_nan=True)
             own = sum(sum(1 for c, a in zip(p.codes[k], p.args[k]) if not (c == REF and a >= 0))
                       for k in range(20))
-            assert p.cost_per_case() == own + 2 * 19  # trees once, plus the readout beyond a + b f
-            assert p.expanded_size() == sum(len(_inline(p, k)[0]) for k in range(20)) + 2 * 19
+            assert p.cost_per_case() == own + 3 * 19  # trees once, plus the readout beyond a + b f
+            assert p.expanded_size() == sum(len(_inline(p, k)[0]) for k in range(20)) + 3 * 19
+            # the readout's sum never makes the program shallower than its deepest tree
+            assert p.depth() >= max(p._inlined[k][1] for k in range(20))
         else:
             out, cnt = reference_eval_graph(p, X)
             assert cnt == p.cost_per_case() * X.shape[0]
@@ -376,3 +377,29 @@ def test_each_operator_every_variant(v, op):
         a, b = pop[i % 30], pop[(i * 7 + 1) % 30]
         child = arm.crossover(a, b, rng) if op == "crossover" else getattr(arm, op)(a, rng)
         assert child.is_well_formed()
+
+
+def _readout(depths):
+    """A ReadoutGraph whose trees are chains of sin of the given depths."""
+    pset = regression_set(1)
+    sin = next(i for i, f in enumerate(pset.functions) if f.name == "sin")
+    codes = [[sin] * d + [REF] for d in depths] + [[ERC]]
+    args = [[0] * d + [input_ref(0)] for d in depths] + [[0.0]]
+    return ReadoutGraph(pset, [1] * len(depths), codes, args, cached=True)
+
+
+def test_a4_readout_depth():
+    # one tree: exactly the tree's own depth, as for any linearly scaled tree
+    assert _readout([5]).depth() == 5
+    # two trees of depth 5: a + w1 T1 + w2 T2 is one level deeper than a + b f
+    assert _readout([5, 5]).depth() == 6
+    # a deep tree and shallow ones: the deep term is joined last, near the root
+    assert _readout([17, 0, 0, 0]).depth() == 17  # add(w T, rest): as deep as a + b f
+    # 20 trees of depth 17 exceed the depth cap of 17
+    assert _readout([17] * 20).depth() == 17 + 4
+
+
+def test_a5_copy_module_limit_never_binds():
+    """Private copies are disjoint subtrees of the expanded tree, so the
+    per-level module limit must be at least the size cap (64 used to bind)."""
+    assert VARIANTS["a5_copy"]["max_modules"] >= HierArmConfig().max_size

@@ -39,7 +39,8 @@ def test_offspring_valid_over_many_generations(arm):
             c = arm.vary([pop[i], pop[j]], rng)
             assert well_formed(arm, c)
             assert c.expanded_size() <= arm.cfg.max_size
-            assert c.functional_size() <= arm.cfg.max_size
+            assert c.stored_size() <= arm.cfg.max_stored
+            assert c.cost_per_case() <= c.expanded_size()  # dead code is free; reuse only lowers cost
             assert c.depth() <= arm.cfg.max_depth
             new.append(c)
         pop = new

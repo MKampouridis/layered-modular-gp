@@ -29,7 +29,14 @@ from ..core.tree_ops import generate, pick_node, replace_subtree, subtree_end
 
 @dataclass
 class TreeArmConfig:
-    max_size: int = 500  # expanded and functional nodes; identical across arms
+    max_size: int = 500  # expanded nodes; identical across arms
+    # Engineering bound on genotype length (all stored nodes, dead code
+    # included), not a fairness measure: dead code is neither executed nor
+    # charged, but without a bound A2's unread arguments and uncalled ADFs
+    # grow without limit (3 Nov 2026). The graph arms' storage is bounded by
+    # construction (fixed CGP genome, module limits). For A1 stored size equals
+    # expanded size, so this never binds.
+    max_stored: int = 1000
     max_depth: int = 17  # expanded depth (Koza)
     init_depth: tuple[int, int] = (2, 6)
     p_crossover: float = 0.9  # otherwise subtree mutation
@@ -50,12 +57,8 @@ class TreeArm:
 
     # ---- validity ----------------------------------------------------------
     def is_valid(self, p: TreeProgram) -> bool:
-        # The functional-size check only binds for A2: code in an ADF argument
-        # the body never reads, or in an ADF that is never called, has no
-        # inlined size, and without this check it bloats without limit
-        # (3 Nov 2026). For A1 it equals expanded_size.
-        return (p.expanded_size() <= self.cfg.max_size and p.functional_size() <= self.cfg.max_size
-                and p.depth() <= self.cfg.max_depth)
+        return (p.expanded_size() <= self.cfg.max_size and p.depth() <= self.cfg.max_depth
+                and p.stored_size() <= self.cfg.max_stored)
 
     # ---- initialisation ----------------------------------------------------
     def random_program(self, depth: int, method: str, rng) -> TreeProgram:

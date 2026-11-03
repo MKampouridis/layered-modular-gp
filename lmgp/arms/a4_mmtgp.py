@@ -18,7 +18,9 @@ are not reproduced: every arm uses fixed rates set by the same tuning
 procedure (docs/wp2-design.md).
 
 Accounting is the shared GraphProgram rule: each tree is executed once per
-evaluation and every read of another tree's output is one REF node.
+evaluation, and a read of another tree's output is a REF node that costs 0
+(it only passes a value on). On regression the linear readout over all trees
+is charged as described in `ReadoutGraph`.
 """
 from __future__ import annotations
 

@@ -176,13 +176,6 @@ class GraphProgram:
         act = self.active
         return len(self.codes[self.out]) + sum(len(self.codes[k]) for k in range(self.n_modules) if act[k])
 
-    def functional_size(self) -> int:
-        """Stored nodes of the active bodies, REF leaves excluded (they only
-        pass a value on). Never exceeds expanded_size, since every active
-        module is read at least once; kept so every arm has the same check."""
-        act = self.active
-        return self.own_cost(self.out) + sum(self.own_cost(k) for k in range(self.n_modules) if act[k])
-
     def key(self) -> tuple:
         return (self.levels, self.codes, self.args, self.cached)
 
@@ -278,11 +271,17 @@ class ReadoutGraph(GraphProgram):
     The readout a + sum_i w_i T_i is fitted outside the program, as linear
     scaling a + b f is for every other arm, and the fit is not charged. Its
     k weights, however, do more than linear scaling's single weight, so the
-    extra terms are charged and counted as nodes: 2(k - 1) per case (k - 1
-    further multiplications and additions beyond a + b f), both in the cost
-    and in the expanded size. With one tree A4 costs exactly what a
-    linearly scaled tree costs. (Added on 3 Nov 2026 after the WP2
-    independent review.)
+    extra terms of the equivalent tree are charged and counted as nodes:
+    3(k - 1) per case (k - 1 further weight constants, multiplications and
+    additions beyond a + b f; the constants cost 1 each, as every ERC does),
+    both in the cost and in the expanded size. The readout's sum also adds
+    depth (see `depth`). With one tree A4 costs, and is as deep as, a linearly
+    scaled tree. (Added on 3 Nov 2026 after the WP2 independent review;
+    weight constants and depth added after the pre-CERES review.)
+
+    The full readout is charged even when the ridge fit gives a column zero
+    weight (constant or non-finite tree outputs): the readout is part of A4's
+    fixed representation, just as A1 pays for a constant subtree.
     """
 
     @cached_property
@@ -291,7 +290,7 @@ class ReadoutGraph(GraphProgram):
 
     @property
     def readout_nodes(self) -> int:
-        return 2 * (self.n_modules - 1)
+        return 3 * (self.n_modules - 1)
 
     def cost_per_case(self) -> int:
         return sum(self.own_cost(k) for k in range(self.n_modules)) + self.readout_nodes
@@ -300,13 +299,21 @@ class ReadoutGraph(GraphProgram):
         return sum(self._inlined[k][0] for k in range(self.n_modules)) + self.readout_nodes
 
     def depth(self) -> int:
-        return max(self._inlined[k][1] for k in range(self.n_modules))
+        """Depth of the shallowest tree equivalent to a + sum_i w_i T_i, less
+        the 2 levels of a + b f that linear scaling adds, uncounted, for every
+        arm. The sum is a binary tree over the terms w_i T_i (depth d_i + 1)
+        and a (depth 0); repeatedly joining the two shallowest terms gives the
+        minimum depth. One tree gives exactly its own depth."""
+        import heapq
+        h = [self._inlined[k][1] + 1 for k in range(self.n_modules)] + [0]
+        heapq.heapify(h)
+        while len(h) > 1:
+            a, b = heapq.heappop(h), heapq.heappop(h)
+            heapq.heappush(h, max(a, b) + 1)
+        return max(h[0] - 2, max(self._inlined[k][1] for k in range(self.n_modules)))
 
     def stored_size(self) -> int:
         return sum(len(self.codes[k]) for k in range(self.n_modules)) + self.readout_nodes
-
-    def functional_size(self) -> int:
-        return sum(self.own_cost(k) for k in range(self.n_modules)) + self.readout_nodes
 
     def evaluate(self, X: np.ndarray) -> np.ndarray:
         """Matrix of module outputs, shape (n, n_modules)."""
