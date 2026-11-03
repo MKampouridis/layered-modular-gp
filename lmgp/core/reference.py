@@ -41,3 +41,45 @@ def reference_eval(prog: TreeProgram, X: np.ndarray):
 
     out = [run_branch(0, X[r], ()) for r in range(X.shape[0])]
     return np.asarray(out, dtype=arch.pset.dtype), counter[0]
+
+
+def reference_eval_graph(prog, X: np.ndarray):
+    """Reference interpreter for GraphProgram: one case at a time, top-down
+    recursion from the output tree, with a per-case memo of module outputs
+    when the program is cached. Returns (outputs, total nodes executed)."""
+    from .graph import ERC, REF
+
+    counter = [0]
+    fns = prog.pset.functions
+
+    def run(b, row, memo):
+        codes, args = prog.codes[b], prog.args[b]
+        pos = [0]
+
+        def node():
+            i = pos[0]
+            pos[0] += 1
+            counter[0] += 1
+            c = codes[i]
+            if c == REF:
+                a = args[i]
+                if a < 0:
+                    return row[-1 - a]
+                if memo is None:
+                    return run(a, row, None)
+                if a not in memo:
+                    memo[a] = run(a, row, memo)
+                return memo[a]
+            if c == ERC:
+                return args[i]
+            f = fns[c]
+            ch = [node() for _ in range(f.arity)]
+            return f.fn(*ch)
+
+        return node()
+
+    out = []
+    with np.errstate(all="ignore"):
+        for r in range(X.shape[0]):
+            out.append(run(prog.out, X[r], {} if prog.cached else None))
+    return np.asarray(out, dtype=prog.pset.dtype), counter[0]

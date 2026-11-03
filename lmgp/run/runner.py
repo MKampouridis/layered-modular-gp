@@ -28,6 +28,8 @@ import pandas as pd
 
 from ..arms.a1_tree import make_a1
 from ..arms.a2_adf import make_a2
+from ..arms.hier import VARIANTS as HIER_VARIANTS
+from ..arms.hier import HierArmConfig, make_hier
 from ..arms.tree import TreeArmConfig
 from ..bench.boolean import even_parity, multiplexer
 from ..bench.srbench import srbench_task
@@ -54,21 +56,25 @@ def build_task(spec: dict, seed: int) -> Task:
     raise ValueError(f"unknown task kind {k}")
 
 
-def build_arm(name: str, task: Task, params: dict):
-    names = {f.name for f in fields(TreeArmConfig)}
+def _make_cfg(cls, params: dict):
+    names = {f.name for f in fields(cls)}
     p = dict(params or {})
-    for key in ("init_depth", "adf_arities"):
-        if key in p:
-            p[key] = tuple(p[key])
-    cfg = TreeArmConfig(**{k: v for k, v in p.items() if k in names})
     unknown = set(p) - names
     if unknown:
         raise ValueError(f"unknown arm params {unknown}")
-    if name == "a1":
-        return make_a1(task.pset, cfg)
-    if name == "a2":
-        return make_a2(task.pset, cfg)
-    raise ValueError(f"arm {name} not implemented in G1")
+    for f in fields(cls):
+        if f.name in p and isinstance(p[f.name], list):
+            p[f.name] = tuple(p[f.name])
+    return cls(**p)
+
+
+def build_arm(name: str, task: Task, params: dict):
+    if name in ("a1", "a2"):
+        cfg = _make_cfg(TreeArmConfig, params)
+        return make_a1(task.pset, cfg) if name == "a1" else make_a2(task.pset, cfg)
+    if name in HIER_VARIANTS:
+        return make_hier(name, task.pset, _make_cfg(HierArmConfig, params))
+    raise ValueError(f"unknown arm {name}")
 
 
 # -------------------------------------------------------------- evaluation --
