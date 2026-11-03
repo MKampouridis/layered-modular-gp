@@ -56,7 +56,7 @@ Not changed:
 
 A 150-generation drift check of all 11 arms after these changes: cost ≤ expanded size everywhere, no reference mismatches, no growth, and time per generation similar or lower. 243 tests pass.
 
-**G1 after these changes.** A1 is unchanged: every A1 node is live. *Superseded by finding 15, which changes A1's search too:* A2 was re-run on the Boolean tasks again, and ADFs cut even-5 effort by **12.1×** (2.40e8 against 2.90e9 units). A1 and A2 are being re-run once more; the SRBench check (A1) will be re-run on CERES.
+**G1 after these changes.** A1 is unchanged: every A1 node is live. Finding 15 changes A1's search too, so both arms were re-run on the Boolean tasks (code `f85d210`; table below). **ADFs cut even-5 effort by 23×** (1.33e8 against 3.09e9 units; 10× in individuals), and A2 now solves even-5 in 30 of 30 runs (A1: 16 of 30). The G1 known-result criterion holds. The SRBench check (A1) will be re-run on CERES.
 
 **Next**
 1. Michael: CERES setup, then the pilot array (`docs/CERES.md` §1–2). It measures speed only, so it can start now. Then the portability check (§ "Portability check").
@@ -80,20 +80,21 @@ A 150-generation drift check of all 11 arms after these changes: cost ≤ expand
 - 1e10 run: functional size is capped. Stored size, counting pass-through nodes, levels off at about 1,100. Time per generation is flat.
 - A2's evolved programs are cheap (about 34 units per case), so 1e10 means about 4.6M evaluations. Python's per-evaluation overhead, not the counter, sets wall time. *(Full-run time: see below.)*
 
-### G1 Boolean, A2 re-run (final counter after the pre-CERES review; code `14469e2`)
-Same settings as on 2 November: 30 runs per cell, pop 500, at most 100 generations, lexicase. A1's rows are unchanged; the old A2 runs are in `results/g1_old_counter/`.
+### G1 Boolean, A1 and A2 re-run (final code after all three reviews, `f85d210`)
+Same settings as on 2 November: 30 runs per cell, pop 500, at most 100 generations, lexicase. Earlier runs are kept in `results/g1_old_counter/`, `results/g1_superseded_cap/` and `results/g1_superseded_noop/`.
 
 | Task | Arm | Solved | Effort (units) [95% CI] | Effort (individuals) | Median solution size |
 | --- | --- | --- | --- | --- | --- |
-| 6-mux | A1 | 30/30 | 2.15e7 [1.08e7, 2.39e7] | 5.5e3 | 41 |
-| 6-mux | A2 | 30/30 | 3.04e7 [2.39e7, 3.04e7] | 8.5e3 | 89 |
-| even-4 | A1 | 30/30 | 4.03e7 [2.35e7, 4.03e7] | 1.65e4 | 214 |
-| even-4 | A2 | 30/30 | 4.46e7 [2.21e7, 6.55e7] | 3.3e4 | 256 |
-| even-5 | A1 | 15/30 | 2.90e9 [1.88e9, 4.89e9] | 3.46e5 | 417 |
-| even-5 | A2 | 26/30 | **2.40e8** [1.15e8, 3.75e8] | 1.08e5 | 389 |
+| 6-mux | A1 | 30/30 | 1.73e7 [9.94e6, 1.73e7] | 4.5e3 | 33 |
+| 6-mux | A2 | 30/30 | 4.26e7 [2.13e7, 5.57e7] | 9.5e3 | 92 |
+| even-4 | A1 | 30/30 | 3.85e7 [1.93e7, 4.09e7] | 2.2e4 | 204 |
+| even-4 | A2 | 30/30 | 3.38e7 [1.59e7, 3.46e7] | 2.3e4 | 280 |
+| even-5 | A1 | 16/30 | 3.09e9 [2.10e9, 5.29e9] | 3.46e5 | 442 |
+| even-5 | A2 | 30/30 | **1.33e8** [6.65e7, 1.47e8] | 3.35e4 | 290 |
 
-- **ADFs reduce effort on even-5 parity by 12.1× in units** (6.8× under the old counter) and 3.2× in individuals, with CIs far apart. ✔ The G1 known-result criterion still holds.
-- On 6-mux and even-4, A2 now costs 1.1–1.4× A1 in units (2.1–2.3× under the old counter). The old counter's charge for pass-through nodes explains most of the gap that has closed. These tasks are too easy for ADFs to pay off.
+- **ADFs reduce effort on even-5 parity by 23× in units** and 10× in individuals, with CIs far apart. ✔
+- On even-4 the two arms are now level (CIs overlap). On 6-mux, A2 costs 2.5× A1: the task is too easy for ADFs to pay off. The advantage grows with problem size, as Koza (1994) reports.
+- History of the even-5 ratio: 6.8× under the old counter, 11.6× after the first cap fix, 12.1× after the dead-argument rule, and 23× after the no-op offspring rule. Most of the last jump comes from A2 no longer spending about 30% of its offspring on dead-code changes.
 
 ## 3 November 2026 — G1 self-certified (gate waived); WP2 built; hand-over to the MacBook Pro
 
