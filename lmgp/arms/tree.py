@@ -29,7 +29,7 @@ from ..core.tree_ops import generate, pick_node, replace_subtree, subtree_end
 
 @dataclass
 class TreeArmConfig:
-    max_size: int = 500  # expanded nodes; identical across arms
+    max_size: int = 500  # expanded and functional nodes; identical across arms
     max_depth: int = 17  # expanded depth (Koza)
     init_depth: tuple[int, int] = (2, 6)
     p_crossover: float = 0.9  # otherwise subtree mutation
@@ -50,7 +50,12 @@ class TreeArm:
 
     # ---- validity ----------------------------------------------------------
     def is_valid(self, p: TreeProgram) -> bool:
-        return p.expanded_size() <= self.cfg.max_size and p.depth() <= self.cfg.max_depth
+        # The functional-size check only binds for A2: code in an ADF argument
+        # the body never reads, or in an ADF that is never called, has no
+        # inlined size, and without this check it bloats without limit
+        # (3 Nov 2026). For A1 it equals expanded_size.
+        return (p.expanded_size() <= self.cfg.max_size and p.functional_size() <= self.cfg.max_size
+                and p.depth() <= self.cfg.max_depth)
 
     # ---- initialisation ----------------------------------------------------
     def random_program(self, depth: int, method: str, rng) -> TreeProgram:

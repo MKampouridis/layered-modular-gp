@@ -176,6 +176,13 @@ class GraphProgram:
         act = self.active
         return len(self.codes[self.out]) + sum(len(self.codes[k]) for k in range(self.n_modules) if act[k])
 
+    def functional_size(self) -> int:
+        """Stored nodes of the active bodies, REF leaves excluded (they only
+        pass a value on). Never exceeds expanded_size, since every active
+        module is read at least once; kept so every arm has the same check."""
+        act = self.active
+        return self.own_cost(self.out) + sum(self.own_cost(k) for k in range(self.n_modules) if act[k])
+
     def key(self) -> tuple:
         return (self.levels, self.codes, self.args, self.cached)
 
@@ -297,6 +304,9 @@ class ReadoutGraph(GraphProgram):
 
     def stored_size(self) -> int:
         return sum(len(self.codes[k]) for k in range(self.n_modules)) + self.readout_nodes
+
+    def functional_size(self) -> int:
+        return sum(self.own_cost(k) for k in range(self.n_modules)) + self.readout_nodes
 
     def evaluate(self, X: np.ndarray) -> np.ndarray:
         """Matrix of module outputs, shape (n, n_modules)."""

@@ -141,7 +141,8 @@ class CGPArm:
 
     # ---- arm interface ------------------------------------------------------------------
     def is_valid(self, p) -> bool:
-        return p.expanded_size() <= self.cfg.max_size and p.depth() <= self.cfg.max_depth
+        return (p.expanded_size() <= self.cfg.max_size and p.functional_size() <= self.cfg.max_size
+                and p.depth() <= self.cfg.max_depth)
 
     def init_population(self, n, rng):
         pop, seen, retries = [], set(), 0

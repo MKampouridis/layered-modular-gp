@@ -159,7 +159,8 @@ class HierArm:
 
     # ---- validity ----------------------------------------------------------------------
     def is_valid(self, p: GraphProgram) -> bool:
-        if p.expanded_size() > self.cfg.max_size or p.depth() > self.cfg.max_depth:
+        if (p.expanded_size() > self.cfg.max_size or p.functional_size() > self.cfg.max_size
+                or p.depth() > self.cfg.max_depth):
             return False
         if not p.is_well_formed():
             return False

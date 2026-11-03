@@ -134,6 +134,8 @@ def test_offspring_valid_and_acyclic(harm):
         assert harm.is_valid(p)  # caps, levels, legal REFs, body depths
         assert p.is_well_formed()  # REFs point to earlier modules only: a DAG
         assert p.expanded_size() <= harm.cfg.max_size and p.depth() <= harm.cfg.max_depth
+        # every active module is read at least once, so the functional-size cap never binds here
+        assert p.functional_size() <= p.expanded_size()
 
 
 @pytest.mark.parametrize("op", ["crossover", "mutate", "rewire", "encapsulate", "delete"])

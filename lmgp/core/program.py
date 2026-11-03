@@ -219,6 +219,15 @@ class TreeProgram:
     def stored_size(self) -> int:
         return sum(len(c) for c in self.codes)
 
+    def functional_size(self) -> int:
+        """Stored nodes that compute something: every node in every branch
+        except CALL and ARG nodes, which only pass a value on. If every ADF
+        is called and every argument is read, this is at most expanded_size;
+        it exceeds it only through hidden code (an argument the body never
+        reads, or an ADF never called), which the size cap must also bound."""
+        kind = self.arch.kind
+        return sum(1 for c in self.codes for code in c if kind[code] not in (Kind.CALL, Kind.ARG))
+
     def depth(self) -> int:
         return self._depth
 

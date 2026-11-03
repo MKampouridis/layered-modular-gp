@@ -183,3 +183,27 @@ def test_expanded_size_and_depth_equal_explicit_inlining():
             assert q.depth() == p.depth()
             # the inlined tree has no calls, so its cost equals its size
             assert q.expanded_size() == q.cost_per_case() == p.expanded_size()
+
+
+def test_code_in_unread_adf_argument_counts_against_the_cap():
+    """Regression (3 Nov 2026): an argument the ADF body never reads has no
+    inlined size but is still evaluated and charged. Without the stored-size
+    check such code bloated without limit (A2 on even-6 reached 23k nodes)."""
+    arm = make_a2(parity_set(2), TreeArmConfig(max_size=12), adf_arities=(2, 3))
+    # RPB = ADF1(x0, x1, big); ADF1 = ARG1, so `big` is never read
+    big = ["and"] * 5 + ["x0"] * 6
+    p = _prog(arm, [["ADF1", "x0", "x1", *big], ["or", "ARG0", "ARG1"], ["ARG1"]])
+    assert p.expanded_size() == 1  # inlines to x1
+    assert p.cost_per_case() == 2 + len(big)  # but every argument is executed and charged
+    assert p.functional_size() == 2 + len(big) + 1  # ADF1 = ARG1 has no functional node
+    assert not arm.is_valid(p)
+
+
+def test_functional_size_never_binds_without_hidden_code():
+    """With every ADF called and every argument read, functional size is at
+    most expanded size, so the extra check cannot bind (and for A1 they are equal)."""
+    arm = make_a2(parity_set(2), TreeArmConfig(), adf_arities=(2, 3))
+    p = _prog(arm, [["and", "ADF0", "x0", "x1", "ADF1", "x0", "x1", "x1"], ["or", "ARG0", "ARG1"],
+                    ["nand", "ADF0", "ARG0", "ARG1", "ARG2"]])
+    # RPB: and + 5 leaves; ADF0: or; ADF1: nand. Inlined: and(or(x0, x1), nand(or(x0, x1), x1))
+    assert p.functional_size() == 8 and p.expanded_size() == 9
