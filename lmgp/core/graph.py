@@ -244,3 +244,47 @@ class GraphProgram:
             if self.active[k]:
                 parts.append(f"M{k}[L{self.levels[k]}] := {self.body_str(k)}")
         return " ; ".join(parts)
+
+
+class ReadoutGraph(GraphProgram):
+    """A graph program whose prediction is a linear readout over the outputs
+    of *all* its modules (A4, as published: a ridge model over every tree).
+
+    The output body is a fixed placeholder (one ERC) and is never executed.
+    Every module is active and executed once per evaluation (cached), so the
+    cost per case is the sum of the module body sizes. The readout weights
+    are fitted outside the program, like linear scaling, and are not
+    charged. Expanded size is the sum of the modules' inlined sizes (the size
+    of the model sum_i w_i * tree_i, not counting the weights); depth is the
+    largest inlined depth.
+    """
+
+    @cached_property
+    def active(self) -> tuple[bool, ...]:
+        return (True,) * self.n_modules
+
+    def cost_per_case(self) -> int:
+        return sum(len(self.codes[k]) for k in range(self.n_modules))
+
+    def expanded_size(self) -> int:
+        return sum(self._inlined[k][0] for k in range(self.n_modules))
+
+    def depth(self) -> int:
+        return max(self._inlined[k][1] for k in range(self.n_modules))
+
+    def stored_size(self) -> int:
+        return self.cost_per_case()
+
+    def evaluate(self, X: np.ndarray) -> np.ndarray:
+        """Matrix of module outputs, shape (n, n_modules)."""
+        n = X.shape[0]
+        cols = [X[:, j] for j in range(X.shape[1])]
+        cache: dict[int, np.ndarray] = {}
+        with np.errstate(all="ignore"):
+            for k in range(self.n_modules):
+                cache[k] = self._eval_body(k, cols, cache)
+        return np.column_stack([np.broadcast_to(cache[k], (n,)) for k in range(self.n_modules)]).astype(
+            self.pset.dtype)
+
+    def __str__(self):
+        return " ; ".join(f"T{k} := {self.body_str(k)}" for k in range(self.n_modules))

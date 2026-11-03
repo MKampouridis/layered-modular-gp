@@ -28,6 +28,7 @@ import pandas as pd
 
 from ..arms.a1_tree import make_a1
 from ..arms.a2_adf import make_a2
+from ..arms.a4_mmtgp import A4Config, make_a4
 from ..arms.hier import VARIANTS as HIER_VARIANTS
 from ..arms.hier import HierArmConfig, make_hier
 from ..arms.tree import TreeArmConfig
@@ -37,7 +38,7 @@ from ..bench.synthetic import compositional_task
 from ..bench.task import Task
 from ..core.counter import ComputeCounter
 from ..core.rng import make_rng, seed_for
-from ..core.scaling import BIG, linear_scale, scaled_predictions
+from ..core.scaling import BIG, linear_readout, linear_scale, scaled_predictions
 from ..selection.lexicase import epsilon_lexicase_select, lexicase_select, tournament_select
 from .config import DEFAULTS, deep_merge, expand_batch, load_yaml, population_for_budget, run_id
 
@@ -72,6 +73,8 @@ def build_arm(name: str, task: Task, params: dict):
     if name in ("a1", "a2"):
         cfg = _make_cfg(TreeArmConfig, params)
         return make_a1(task.pset, cfg) if name == "a1" else make_a2(task.pset, cfg)
+    if name == "a4":
+        return make_a4(task.pset, _make_cfg(A4Config, params))
     if name in HIER_VARIANTS:
         return make_hier(name, task.pset, _make_cfg(HierArmConfig, params))
     raise ValueError(f"unknown arm {name}")
@@ -86,7 +89,7 @@ def fitness(prog, X, y, kind):
         if kind == "boolean":
             err = (f != y).astype(float)
             return err, float(err.sum()), None
-        a, b = linear_scale(f, y)
+        a, b = linear_readout(f, y) if f.ndim == 2 else linear_scale(f, y)
         err = np.abs(y - scaled_predictions(f, a, b))
     err[~np.isfinite(err)] = BIG
     err = np.minimum(err, BIG)
@@ -285,7 +288,12 @@ class Run:
             te = apply_model(p, sc, task.X_test)
             out.update({"train_mse": mse(tr, task.y_train), "train_r2": r2(tr, task.y_train),
                         "val_mse": S["champ_val"], "test_mse": mse(te, task.y_test),
-                        "test_r2": r2(te, task.y_test), "scale_a": sc[0], "scale_b": sc[1]})
+                        "test_r2": r2(te, task.y_test), "scale_a": sc[0]})
+            if np.ndim(sc[1]) == 0:
+                out["scale_b"] = sc[1]
+            else:  # linear readout (A4): weights kept as JSON text
+                out["scale_b"] = float("nan")
+                out["readout_w"] = json.dumps([float(v) for v in sc[1]])
         out.update({"model_size": p.expanded_size(), "model_stored": p.stored_size(),
                     "model_depth": p.depth(), "model": str(p),
                     "config": cfg, "arm_desc": self.arm.describe(), "task_meta": task.meta,

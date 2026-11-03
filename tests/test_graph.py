@@ -186,3 +186,44 @@ def test_hier_run_deterministic_and_budget_exact():
         a, b = Run(dict(cfg)).execute(), Run(dict(cfg)).execute()
         assert a["units"] == b["units"] and a["best_train"] == b["best_train"] and a["model"] == b["model"]
         assert a["units"] <= 2_000_000
+
+
+# ---- A4 ------------------------------------------------------------------------------------
+from lmgp.arms.a4_mmtgp import make_a4  # noqa: E402
+from lmgp.core.graph import ReadoutGraph  # noqa: E402
+
+
+@pytest.mark.parametrize("pname", list(PSETS))
+def test_a4_valid_window_and_accounting(pname):
+    arm = make_a4(PSETS[pname](), max_size=300)
+    X = data(arm.pset)
+    for p in bred(arm, n=40, gens=6):
+        assert arm.is_valid(p) and p.n_modules == 20
+        for x in range(20):
+            for c, a in zip(p.codes[x], p.args[x]):
+                if c == REF:
+                    assert (a < 0 and x < 10) or (a >= 0 and x - 10 <= a < x)
+        if isinstance(p, ReadoutGraph):
+            # every tree runs once; cost = sum of tree sizes = reference count over all trees
+            F = p.evaluate(X)
+            for k in range(20):
+                q = GraphProgram(p.pset, p.levels, list(p.codes[:20]) + [[REF]], list(p.args[:20]) + [[k]])
+                out, cnt = reference_eval_graph(q, X)
+                np.testing.assert_allclose(F[:, k], out, rtol=1e-9, atol=1e-12, equal_nan=True)
+            assert p.cost_per_case() == sum(len(c) for c in p.codes[:20])
+            assert p.expanded_size() == sum(len(_inline(p, k)[0]) for k in range(20))
+        else:
+            out, cnt = reference_eval_graph(p, X)
+            assert cnt == p.cost_per_case() * X.shape[0]
+
+
+def test_linear_readout_recovers_combination():
+    from lmgp.core.scaling import linear_readout, scaled_predictions
+
+    rng = np.random.default_rng(0)
+    F = rng.normal(size=(200, 5))
+    F[:, 4] = np.inf  # a broken tree gets weight 0 and does not poison predictions
+    y = 1.5 + F[:, :4] @ np.array([2.0, -1.0, 0.0, 0.5])
+    a, w = linear_readout(F, y)
+    assert np.isclose(a, 1.5, atol=1e-3) and np.allclose(w[:4], [2, -1, 0, 0.5], atol=1e-3) and w[4] == 0
+    assert np.all(np.isfinite(scaled_predictions(F, a, w)))
