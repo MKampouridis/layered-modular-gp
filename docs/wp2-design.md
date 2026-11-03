@@ -85,7 +85,9 @@ All rates are config parameters. In WP2 they are set by the equal-effort tuning 
 
 MMTGP's adaptive operator rates and its EDA terminal mutation are **not** reproduced. Every arm uses fixed rates chosen by the same tuning procedure, so tuning effort stays equal. This is noted as a deviation.
 
-**A3** uses point mutation on genes (function, connection or output) with a per-gene rate, plus no crossover, as standard CGP, under the shared lexicase loop. Using population-based lexicase selection rather than Miller's (1+4)-ES keeps "only the representation differs" intact; it is noted as a deviation from CGP's usual practice.
+**A3** uses Goldman and Punch's (2013) single-active mutation and no crossover, as is standard for CGP. Genes are mutated one at a time until an active gene changes, so no evaluation is spent on a phenotypically identical offspring. It runs under the shared lexicase loop. Using population-based lexicase selection rather than Miller's (1+4)-ES keeps "only the representation differs" intact; this is noted as a deviation from CGP's usual practice.
+
+**A3-lb1 on Boolean tasks:** with only binary functions, every phenotype is the full depth-6 tree (127 nodes), so its size cannot vary. This is a property of the strictly layered grid, noted for interpretation.
 
 ## 5. Shared loop
 
