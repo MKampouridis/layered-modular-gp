@@ -57,14 +57,20 @@ def load_yaml(path) -> dict:
 
 
 def expand_batch(batch: dict) -> list[dict]:
-    """batch = {"base": {...}, "grid": {"dotted.key": [values...]}, "seeds": N or [indices]}."""
-    base = deep_merge(DEFAULTS, batch.get("base", {}))
+    """batch = {"base": {...}, "cases": [{...}, ...], "grid": {"dotted.key": [values...]},
+    "seeds": N or [indices]}.
+
+    Each case (optional) is merged into the base; the grid product and the
+    seeds are then applied to every case, in that order."""
+    base0 = deep_merge(DEFAULTS, batch.get("base", {}))
+    cases = batch.get("cases") or [{}]
     grid = batch.get("grid", {})
     seeds = batch.get("seeds", 1)
     seed_list = list(range(seeds)) if isinstance(seeds, int) else list(seeds)
     keys = list(grid)
     runs = []
-    for combo in itertools.product(*[grid[k] for k in keys]):
+    for case, combo in itertools.product(cases, itertools.product(*[grid[k] for k in keys])):
+        base = deep_merge(base0, case)
         cfg = copy.deepcopy(base)
         for k, v in zip(keys, combo):
             d = cfg

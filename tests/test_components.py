@@ -115,3 +115,26 @@ def test_task_spec_replaced_not_merged():
     runs = expand_batch({"grid": {"task": [{"kind": "mux", "k": 2}]}, "seeds": 1})
     assert runs[0]["task"] == {"kind": "mux", "k": 2}
     assert Run(runs[0]).id == run_id(runs[0])
+
+
+def test_tuning_configs_and_ranking():
+    import pandas as pd
+
+    from lmgp.run.config import expand_batch
+    from lmgp.run.tuning import ARMS, configurations, rank_configs, tuning_batch
+
+    for arm in ARMS:
+        c = configurations(arm)
+        assert len(c) == 20 and c[0] == {} and c == configurations(arm)  # default first, deterministic
+    runs = expand_batch(tuning_batch())
+    assert len(runs) == 9 * 20 * 4 * 5
+    df = pd.DataFrame([
+        {"arm": "a1", "task": "t", "kind": "regression", "tuning_config": 0, "val_mse": 2.0},
+        {"arm": "a1", "task": "t", "kind": "regression", "tuning_config": 1, "val_mse": 1.0},
+        {"arm": "a1", "task": "p", "kind": "boolean", "tuning_config": 0, "best_train": 0.0,
+         "units_to_solution_or_budget": 5.0},
+        {"arm": "a1", "task": "p", "kind": "boolean", "tuning_config": 1, "best_train": 0.0,
+         "units_to_solution_or_budget": 9.0},
+    ])
+    r = rank_configs(df).set_index("tuning_config")["mean_rank"]
+    assert r[0] == r[1] == 1.5  # 1 wins regression, 0 wins parity (same error, fewer units)
