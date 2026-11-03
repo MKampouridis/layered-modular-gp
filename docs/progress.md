@@ -1,6 +1,54 @@
 # Progress
 
+## 3 November 2026 (MacBook Pro, later) — pre-CERES code review: findings fixed
+
+**Why.** The WP2 independent review had missed the size-cap hole found earlier today (below), so before any CERES campaign the code was reviewed again. Three reviews ran:
+- two independent Claude agents: one on the counter and caps across all arms, one on the runner, CERES scripts and campaign statistics. Neither was told about the earlier finding;
+- ChatGPT, given the same brief by Michael;
+- my own 400-generation drift check of all 11 arms on even-6 and comp L3 R2. It tracked size, cost and time per generation, and compared charged cost with the reference interpreter on sampled programs. It found no drift and no mismatches.
+
+**Findings and decisions.** Every finding was reproduced before fixing. Commits `14469e2` (counter and caps) and the campaign commit that follows it.
+
+| # | Finding | Found by | Decision |
+| --- | --- | --- | --- |
+| 1 | A2 executed and charged ADF arguments the body never reads, on every call, so its cost was unbounded. A valid program cost 12,991 units per case at expanded size 127. In real runs, 15–19% of A2's units bought nothing. | counter agent | **[flag: counter change]** Dead code is neither executed nor charged, in every arm: unread ADF arguments (A2), like inactive modules (A3–A6). Cost per case ≤ expanded size now holds for every arm (property-tested). The reference interpreter is now call-by-need, an independent mechanism from the evaluator's static masks. |
+| 2 | The functional-size check (added earlier today) counted A2's dead code, while inactive CGP nodes and modules were free. | counter agent, ChatGPT | **[flag: fairness]** Caps measure live code only, in every arm: expanded size ≤ 500 and depth ≤ 17. The functional-size check is removed. A2's stored size (dead code included) is capped at 1,000 nodes, an engineering bound on genotype length; the graph arms' storage is bounded by construction. |
+| 3 | A4's readout charge left out the k − 1 weight constants. | counter agent | **[flag]** The readout is charged 3(k − 1), since constants cost 1 everywhere. A4 was being undercharged by about 24%. |
+| 4 | A4's depth ignored the readout's sum. | counter agent, ChatGPT | The depth is that of the shallowest equivalent tree, less linear scaling's two uncounted levels. |
+| 5 | A4 is charged for zero-weight readout columns. | ChatGPT | Kept: the readout is part of A4's fixed representation, as a constant subtree is part of an A1 program. Documented. |
+| 6 | A5-copy's 64-module limit per level rejected legal programs. | ChatGPT | The limit is now 500, which can never bind. |
+| 7 | Even-5 parity was both a tuning task and a screening task. | runner agent, ChatGPT | **[flag]** Screening uses even-6 to even-8 plus 11-mux. Even-5 stays as a tuning task. |
+| 8 | Missing runs were silently skipped. The G2 test could PASS on 1 of 53 tasks. | runner agent, ChatGPT | The tuning report writes nothing, and the G2 test gives no verdict (INCOMPLETE), unless every planned run is present. The G2 denominator is all planned tasks. |
+| 9 | 950 of the 3,600 tuning runs were exact duplicates. The CGP arms had 1–9 distinct configurations, not 20. | runner agent, ChatGPT | **[flag]** CGP tunes its grid: A3 its rows, columns and levels-back; A3-lb1 and A3-lbmax their rows. `n_const` is not tuned. Every arm gets 20 configurations that are distinct in the settings actually used. This also fixes a latent bug: the CGP variant settings overrode tuned parameters. |
+| 10 | A half-written `final.parquet` counted as done; resubmitting could run the same run twice. | runner agent | Outputs are written atomically, with `final.parquet` last. A `RUNNING` heartbeat lock makes jobs skip live runs and take over dead ones. |
+| 11 | The git commit was recorded at the end of a run; `logs/` was not ignored; tuning had no checkpoints. | runner agent | Versions are captured at the start, and `git_commit` is a column of `final.parquet`. `logs/` is ignored. Tuning checkpoints every 25 generations. |
+| 12 | No implemented rule picked A5 or A6 for G2. | runner agent | The tuned A5 and A6 are compared per tuning task; the arm better on more tasks wins, and a tie goes to A5. The result is written to `tuned.yaml` as `g2_arm`. |
+| 13 | Two docstrings misstated the counter. | counter agent | Corrected. |
+
+Reviewed and found sound (by at least two reviewers):
+- the budget is never exceeded;
+- checkpoint/resume is exact for all arms;
+- runs are byte-identical across hash seeds;
+- the tuning (100–104) and screening (0–29) seed indices don't overlap;
+- run IDs are unique;
+- the SGE index mapping is correct;
+- there is no train/validation/test leakage;
+- the Mann–Whitney direction and Holm correction are correct;
+- validation is never charged;
+- cached modules are charged once;
+- A5-copy's cost equals its expanded size.
+
+**G1 after these changes.** A1 is unchanged: every A1 node is live. A2 was re-run on the Boolean tasks again; see the table below, now updated. ADFs cut even-5 effort by **12.1×** (2.40e8 against 2.90e9 units). 237 tests pass.
+
+**Next**
+1. Michael: CERES setup, then the pilot array (`docs/CERES.md` §1–2). It measures speed only, so it can start now. Then the portability check (§ "Portability check").
+2. The even-6 G1 batch (`configs/g1/parity6.yaml`, 60 runs) on CERES, as the first real batch through the pipeline.
+3. From the pilot timings: decide whether screening keeps the 1e11 budget, and whether A2 needs Numba (its cheap programs make wall time per unit about 10× A1's).
+4. The tuning campaign (`configs/wp2/tuning.yaml`, regenerated: 3,600 runs, 20 distinct configurations per arm, checkpointed), then `make_tuning.py report`, `make_screening.py write`, the screening, and the G2 test. Ask Michael at the G2 gate.
+
 ## 3 November 2026 (MacBook Pro) — slow A2 run diagnosed: a hole in the size cap
+
+*Partly superseded by the review above: the functional-size check described here was replaced by the dead-code rule and A2's stored-size bound.*
 
 ### What changed
 - **Size cap now also bounds functional size [flag: fairness-relevant, decided].** Every arm's offspring must satisfy expanded size ≤ 500, depth ≤ 17 **and functional size ≤ 500**. Functional size is the number of stored nodes, not counting the nodes that only pass a value on (ADF CALL and ARG nodes, and module REFs). Commit `c4bee68`.
@@ -13,20 +61,20 @@
 - 1e10 run: functional size is capped. Stored size, counting pass-through nodes, levels off at about 1,100. Time per generation is flat.
 - A2's evolved programs are cheap (about 34 units per case), so 1e10 means about 4.6M evaluations. Python's per-evaluation overhead, not the counter, sets wall time. *(Full-run time: see below.)*
 
-### G1 Boolean, A2 re-run (new counter, new cap; code `ad80cc9`)
+### G1 Boolean, A2 re-run (final counter after the pre-CERES review; code `14469e2`)
 Same settings as on 2 November: 30 runs per cell, pop 500, at most 100 generations, lexicase. A1's rows are unchanged; the old A2 runs are in `results/g1_old_counter/`.
 
 | Task | Arm | Solved | Effort (units) [95% CI] | Effort (individuals) | Median solution size |
 | --- | --- | --- | --- | --- | --- |
 | 6-mux | A1 | 30/30 | 2.15e7 [1.08e7, 2.39e7] | 5.5e3 | 41 |
-| 6-mux | A2 | 30/30 | 3.22e7 [2.61e7, 3.22e7] | 8.5e3 | 89 |
+| 6-mux | A2 | 30/30 | 3.04e7 [2.39e7, 3.04e7] | 8.5e3 | 89 |
 | even-4 | A1 | 30/30 | 4.03e7 [2.35e7, 4.03e7] | 1.65e4 | 214 |
-| even-4 | A2 | 29/30 | 4.95e7 [2.42e7, 6.81e7] | 3.5e4 | 257 |
+| even-4 | A2 | 30/30 | 4.46e7 [2.21e7, 6.55e7] | 3.3e4 | 256 |
 | even-5 | A1 | 15/30 | 2.90e9 [1.88e9, 4.89e9] | 3.46e5 | 417 |
-| even-5 | A2 | 27/30 | **2.49e8** [1.25e8, 4.01e8] | 1.0e5 | 387 |
+| even-5 | A2 | 26/30 | **2.40e8** [1.15e8, 3.75e8] | 1.08e5 | 389 |
 
-- **ADFs reduce effort on even-5 parity by 11.6× in units** (6.8× under the old counter) and 3.5× in individuals, with CIs far apart. ✔ The G1 known-result criterion still holds.
-- On 6-mux and even-4, A2 now costs 1.2–1.5× A1 in units (2.1–2.3× under the old counter). The old counter's charge for pass-through nodes explains most of the gap that has closed. These tasks are too easy for ADFs to pay off.
+- **ADFs reduce effort on even-5 parity by 12.1× in units** (6.8× under the old counter) and 3.2× in individuals, with CIs far apart. ✔ The G1 known-result criterion still holds.
+- On 6-mux and even-4, A2 now costs 1.1–1.4× A1 in units (2.1–2.3× under the old counter). The old counter's charge for pass-through nodes explains most of the gap that has closed. These tasks are too easy for ADFs to pay off.
 
 ## 3 November 2026 — G1 self-certified (gate waived); WP2 built; hand-over to the MacBook Pro
 
@@ -58,7 +106,7 @@ Wall seconds per run (one seed; Boolean runs do not stop at a solution):
 
 So under the new counter, A2 does far more evaluations per unit, because its call and ARG nodes no longer cost anything. Python's per-evaluation overhead then dominates. Why the old-counter run took over 7 hours is still unexplained. **First job on the Pro:** run `trace_run.py` to completion, profile it, and decide whether evaluation needs Numba (allowed when profiling shows the need). The pilot should then be repeated on CERES, not the laptop.
 
-### Next steps, in order
+### Next steps, in order (superseded: see "Next" at the top)
 1. Diagnose the slow A2 even-6 run (above).
 2. Re-run A2's G1 Boolean cells under the new counter: `mkdir -p results/g1_old_counter && mv results/g1/a2__parity4* results/g1/a2__parity5* results/g1/a2__mux6* results/g1_old_counter/`, then `.venv/bin/python scripts/run_local.py configs/g1/boolean.yaml --out results/g1 --jobs 8`, then `scripts/g1_report.py --boolean`.
 3. Run the even-6 G1 batch (`configs/g1/parity6.yaml`, not started), to check that the ADF advantage grows with n.

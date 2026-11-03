@@ -76,7 +76,8 @@ def build_arm(name: str, task: Task, params: dict):
         cfg = _make_cfg(TreeArmConfig, params)
         return make_a1(task.pset, cfg) if name == "a1" else make_a2(task.pset, cfg)
     if name in CGP_VARIANTS:
-        return make_a3(name, task.pset, _make_cfg(CGPConfig, params))
+        c = _make_cfg(CGPConfig, params)  # validates names, converts lists
+        return make_a3(name, task.pset, **{k: getattr(c, k) for k in (params or {})})
     if name == "a4":
         return make_a4(task.pset, _make_cfg(A4Config, params))
     if name in HIER_VARIANTS:
@@ -143,6 +144,22 @@ def versions() -> dict:
 
 ARM_STATE = ("frozen", "init_stats")  # arm attributes set during a run, checkpointed with it
 
+# A run in progress holds <run dir>/RUNNING and touches it every generation.
+# A lock untouched for LOCK_STALE_S seconds is taken to belong to a dead job.
+# (An SGE-suspended job also stops touching it: do not resubmit elements that
+# qstat shows as suspended.)
+LOCK_STALE_S = 30 * 60
+
+
+class RunLocked(RuntimeError):
+    """Another live process is running this run."""
+
+
+def _write_atomic(path: Path, write) -> None:
+    tmp = path.with_name(path.name + ".tmp")
+    write(tmp)
+    os.replace(tmp, path)
+
 
 class Run:
     def __init__(self, cfg: dict, out_dir: str | Path | None = None):
@@ -168,6 +185,39 @@ class Run:
         raise ValueError(s)
 
     def execute(self) -> dict:
+        self.versions = versions()  # at the start: the code that actually runs
+        lock = self._acquire_lock()
+        try:
+            return self._execute()
+        finally:
+            if lock is not None:
+                lock.unlink(missing_ok=True)
+
+    def _acquire_lock(self):
+        if not self.out:
+            return None
+        import socket
+        import time
+
+        self.out.mkdir(parents=True, exist_ok=True)
+        lock = self.out / "RUNNING"
+        me = f"{socket.gethostname()} pid {os.getpid()} job {os.environ.get('JOB_ID', '-')}" \
+             f".{os.environ.get('SGE_TASK_ID', '-')}"
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            age = time.time() - lock.stat().st_mtime
+            if age < LOCK_STALE_S:
+                raise RunLocked(f"{self.id} is running elsewhere ({lock.read_text().strip()}, "
+                                f"last seen {age:.0f}s ago)")
+            lock.write_text(me + "\n")  # stale: take it over
+        else:
+            os.write(fd, (me + "\n").encode())
+            os.close(fd)
+        self._lock = lock
+        return lock
+
+    def _execute(self) -> dict:
         cfg, task, arm = self.cfg, self.task, self.arm
         ck = self.out / "ckpt.pkl" if self.out else None
         if ck and ck.exists():
@@ -221,10 +271,17 @@ class Run:
         final = self._final(S, counter, gen)
         if self.out:
             self.out.mkdir(parents=True, exist_ok=True)
-            pd.DataFrame(log).to_parquet(self.out / "generations.parquet", index=False)
+            # Each file is written atomically, and final.parquet (the "done"
+            # marker for skip-if-finished) last.
+            _write_atomic(self.out / "generations.parquet",
+                          lambda f: pd.DataFrame(log).to_parquet(f, index=False))
+            _write_atomic(self.out / "final.json",
+                          lambda f: f.write_text(json.dumps(final, indent=2, default=str)))
             row = {k: v for k, v in final.items() if not isinstance(v, (dict, list))}
-            pd.DataFrame([row]).to_parquet(self.out / "final.parquet", index=False)
-            (self.out / "final.json").write_text(json.dumps(final, indent=2, default=str))
+            row["git_commit"] = self.versions.get("git_commit")
+            row["git_dirty"] = self.versions.get("git_dirty")
+            _write_atomic(self.out / "final.parquet",
+                          lambda f: pd.DataFrame([row]).to_parquet(f, index=False))
             if ck and ck.exists():
                 ck.unlink()
         self.log = log
@@ -261,6 +318,9 @@ class Run:
         return out_p, out_e, out_f, out_s
 
     def _log(self, log, gen, pop, fits, scal, counter, S, partial=False):
+        lock = getattr(self, "_lock", None)
+        if lock is not None:
+            os.utime(lock)  # heartbeat
         sizes = np.array([p.expanded_size() for p in pop])
         stored = np.array([p.stored_size() for p in pop])
         depths = np.array([p.depth() for p in pop])
@@ -308,7 +368,7 @@ class Run:
         out.update({"model_size": p.expanded_size(), "model_stored": p.stored_size(),
                     "model_depth": p.depth(), "model": str(p),
                     "config": cfg, "arm_desc": self.arm.describe(), "task_meta": task.meta,
-                    "versions": versions()})
+                    "versions": getattr(self, "versions", None) or versions()})
         return out
 
 

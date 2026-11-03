@@ -5,6 +5,7 @@ base:
   budget: 10000000000.0
   pop_size: auto
   max_generations: 1000000000
+  checkpoint_every: 25
 cases:
 - arm: a1
   arm_params: {}
@@ -375,275 +376,275 @@ cases:
   tuning_config: 0
 - arm: a3
   arm_params:
-    cols: 100
-    levels_back: 100
-    n_const: 2
+    rows: 2
+    cols: 200
+    levels_back: 200
   tuning_config: 1
 - arm: a3
   arm_params:
+    rows: 1
     cols: 50
     levels_back: 50
-    n_const: 1
   tuning_config: 2
 - arm: a3
   arm_params:
-    cols: 50
-    levels_back: 50
-    n_const: 1
+    rows: 1
+    cols: 300
+    levels_back: 60
   tuning_config: 3
 - arm: a3
   arm_params:
-    cols: 200
-    levels_back: 200
-    n_const: 1
+    rows: 1
+    cols: 50
+    levels_back: 10
   tuning_config: 4
 - arm: a3
   arm_params:
+    rows: 2
     cols: 200
-    levels_back: 200
-    n_const: 1
+    levels_back: 40
   tuning_config: 5
 - arm: a3
   arm_params:
-    cols: 50
-    levels_back: 50
-    n_const: 4
+    rows: 2
+    cols: 300
+    levels_back: 300
   tuning_config: 6
 - arm: a3
   arm_params:
-    cols: 200
-    levels_back: 200
-    n_const: 2
+    rows: 1
+    cols: 50
+    levels_back: 25
   tuning_config: 7
 - arm: a3
   arm_params:
+    rows: 4
     cols: 200
-    levels_back: 200
-    n_const: 4
+    levels_back: 40
   tuning_config: 8
 - arm: a3
   arm_params:
+    rows: 2
     cols: 100
-    levels_back: 100
-    n_const: 1
+    levels_back: 20
   tuning_config: 9
 - arm: a3
   arm_params:
-    cols: 200
-    levels_back: 200
-    n_const: 2
+    rows: 1
+    cols: 100
+    levels_back: 20
   tuning_config: 10
 - arm: a3
   arm_params:
-    cols: 50
-    levels_back: 50
-    n_const: 1
+    rows: 4
+    cols: 100
+    levels_back: 100
   tuning_config: 11
 - arm: a3
   arm_params:
+    rows: 4
     cols: 50
-    levels_back: 50
-    n_const: 2
+    levels_back: 25
   tuning_config: 12
 - arm: a3
   arm_params:
+    rows: 4
     cols: 100
-    levels_back: 100
-    n_const: 4
+    levels_back: 20
   tuning_config: 13
 - arm: a3
   arm_params:
-    cols: 200
-    levels_back: 200
-    n_const: 1
+    rows: 4
+    cols: 50
+    levels_back: 10
   tuning_config: 14
 - arm: a3
   arm_params:
-    cols: 100
+    rows: 2
+    cols: 200
     levels_back: 100
-    n_const: 4
   tuning_config: 15
 - arm: a3
   arm_params:
+    rows: 2
     cols: 50
     levels_back: 50
-    n_const: 1
   tuning_config: 16
 - arm: a3
   arm_params:
+    rows: 1
     cols: 200
     levels_back: 200
-    n_const: 2
   tuning_config: 17
 - arm: a3
   arm_params:
-    cols: 200
-    levels_back: 200
-    n_const: 1
+    rows: 2
+    cols: 100
+    levels_back: 50
   tuning_config: 18
 - arm: a3
   arm_params:
-    cols: 200
-    levels_back: 200
-    n_const: 4
+    rows: 2
+    cols: 100
+    levels_back: 100
   tuning_config: 19
 - arm: a3_lb1
   arm_params: {}
   tuning_config: 0
 - arm: a3_lb1
   arm_params:
-    n_const: 2
+    rows: 26
   tuning_config: 1
 - arm: a3_lb1
   arm_params:
-    n_const: 1
+    rows: 20
   tuning_config: 2
 - arm: a3_lb1
   arm_params:
-    n_const: 2
+    rows: 30
   tuning_config: 3
 - arm: a3_lb1
   arm_params:
-    n_const: 4
+    rows: 2
   tuning_config: 4
 - arm: a3_lb1
   arm_params:
-    n_const: 1
+    rows: 8
   tuning_config: 5
 - arm: a3_lb1
   arm_params:
-    n_const: 1
+    rows: 38
   tuning_config: 6
 - arm: a3_lb1
   arm_params:
-    n_const: 2
+    rows: 28
   tuning_config: 7
 - arm: a3_lb1
   arm_params:
-    n_const: 4
+    rows: 40
   tuning_config: 8
 - arm: a3_lb1
   arm_params:
-    n_const: 2
+    rows: 22
   tuning_config: 9
 - arm: a3_lb1
   arm_params:
-    n_const: 2
+    rows: 14
   tuning_config: 10
 - arm: a3_lb1
   arm_params:
-    n_const: 4
+    rows: 18
   tuning_config: 11
 - arm: a3_lb1
   arm_params:
-    n_const: 4
+    rows: 34
   tuning_config: 12
 - arm: a3_lb1
   arm_params:
-    n_const: 2
+    rows: 4
   tuning_config: 13
 - arm: a3_lb1
   arm_params:
-    n_const: 2
+    rows: 16
   tuning_config: 14
 - arm: a3_lb1
   arm_params:
-    n_const: 2
+    rows: 24
   tuning_config: 15
 - arm: a3_lb1
   arm_params:
-    n_const: 2
+    rows: 36
   tuning_config: 16
 - arm: a3_lb1
   arm_params:
-    n_const: 1
+    rows: 6
   tuning_config: 17
 - arm: a3_lb1
   arm_params:
-    n_const: 4
+    rows: 12
   tuning_config: 18
 - arm: a3_lb1
   arm_params:
-    n_const: 1
+    rows: 32
   tuning_config: 19
 - arm: a3_lbmax
   arm_params: {}
   tuning_config: 0
 - arm: a3_lbmax
   arm_params:
-    n_const: 4
+    rows: 32
   tuning_config: 1
 - arm: a3_lbmax
   arm_params:
-    n_const: 2
+    rows: 18
   tuning_config: 2
 - arm: a3_lbmax
   arm_params:
-    n_const: 2
+    rows: 26
   tuning_config: 3
 - arm: a3_lbmax
   arm_params:
-    n_const: 2
+    rows: 22
   tuning_config: 4
 - arm: a3_lbmax
   arm_params:
-    n_const: 2
+    rows: 28
   tuning_config: 5
 - arm: a3_lbmax
   arm_params:
-    n_const: 1
+    rows: 4
   tuning_config: 6
 - arm: a3_lbmax
   arm_params:
-    n_const: 4
+    rows: 14
   tuning_config: 7
 - arm: a3_lbmax
   arm_params:
-    n_const: 1
+    rows: 40
   tuning_config: 8
 - arm: a3_lbmax
   arm_params:
-    n_const: 1
+    rows: 16
   tuning_config: 9
 - arm: a3_lbmax
   arm_params:
-    n_const: 4
+    rows: 36
   tuning_config: 10
 - arm: a3_lbmax
   arm_params:
-    n_const: 2
+    rows: 30
   tuning_config: 11
 - arm: a3_lbmax
   arm_params:
-    n_const: 2
+    rows: 6
   tuning_config: 12
 - arm: a3_lbmax
   arm_params:
-    n_const: 2
+    rows: 8
   tuning_config: 13
 - arm: a3_lbmax
   arm_params:
-    n_const: 2
+    rows: 38
   tuning_config: 14
 - arm: a3_lbmax
   arm_params:
-    n_const: 1
+    rows: 24
   tuning_config: 15
 - arm: a3_lbmax
   arm_params:
-    n_const: 2
+    rows: 2
   tuning_config: 16
 - arm: a3_lbmax
   arm_params:
-    n_const: 2
+    rows: 34
   tuning_config: 17
 - arm: a3_lbmax
   arm_params:
-    n_const: 4
+    rows: 12
   tuning_config: 18
 - arm: a3_lbmax
   arm_params:
-    n_const: 4
+    rows: 20
   tuning_config: 19
 - arm: a4
   arm_params: {}

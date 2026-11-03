@@ -31,9 +31,10 @@ That keeps the compute counter identical by construction.
   - The first version charged every REF 1 unit. That made the graph arms pay 20–50% more than A1 for the same function, by a different amount per arm.
 - **Cost per case** = the sum of body sizes of the active modules + the output tree size.
 - **A cached module output is charged once per program evaluation**, the G1 criterion deferred to WP2. Further reads are free.
-- **A5-copy** gives every module read a private copy, in its genes as well as its computation. After every operator, a module read by several REFs is duplicated, so each REF owns its module. Its cost therefore equals its expanded size, as for a tree. The per-level module limit is lifted for A5-copy; the shared expanded-size cap bounds it.
+- **A5-copy** gives every module read a private copy, in its genes as well as its computation. After every operator, a module read by several REFs is duplicated, so each REF owns its module. Its cost therefore equals its expanded size, as for a tree. The per-level module limit is lifted for A5-copy (set to 500, which can never bind; it was 64 until the pre-CERES review, and that did bind); the shared expanded-size cap bounds it.
 - **Expanded size** is the size of the fully inlined tree: each REF is replaced by a copy of the referenced module's inlined body. Expanded depth is defined the same way.
   - The cap stays at 500 expanded nodes and depth 17, identical for all arms, as CLAUDE.md requires.
+  - **Dead code is free and uncapped, in every arm [flag, pre-CERES review, 3 Nov].** Inactive modules (A3–A6) and ADF arguments that the inlined body never reads (A2) cannot reach the output, so they are neither executed nor charged, and the caps measure live code only. Hence cost per case ≤ expanded size for every arm (property-tested). A2's stored size, dead code included, is bounded at 1,000 nodes as an engineering limit on genotype length; the graph arms' storage is bounded by construction.
   - Reuse therefore cannot buy a larger function. What it can buy is cheaper evaluation, since cost per case is less than expanded size, so more evaluations fit in a budget. It also gives a more compact genotype for search to work on.
 
 **Consequence for A1-size [flag, decide before WP3].** With an identical expanded-size cap, A5 can never exceed A1's cap, so "A1 allowed A5's expanded size" coincides with A1. A1-size only has meaning if the modular arms' cap is lifted to the same cap on *stored* size. That would change the design default in CLAUDE.md, which says to change it only with Michael's agreement.
@@ -57,7 +58,9 @@ That keeps the compute counter identical by construction.
 - **A5 and A6 initialisation:** each level starts with 2–4 modules, drawn uniformly, plus a ramped output tree.
 - **A4's readout [flag]:** A4's least-squares readout is part of its published representation. The other arms use the standard two-parameter linear scaling of a single output.
   - I keep A4 as published so that it is a faithful baseline.
-  - Fitting the readout is not charged, as linear scaling is not. But its k − 1 extra weighted terms beyond a + b·f are charged and counted as nodes: 2(k − 1) per case, in both cost and expanded size (revised after the review).
+  - Fitting the readout is not charged, as linear scaling is not. But its k − 1 extra weighted terms beyond a + b·f are charged and counted as nodes: 3(k − 1) per case (weight constant, multiplication, addition), in both cost and expanded size. (Revised after the WP2 review; the weight constants were added in the pre-CERES review, since every ERC costs 1.)
+  - The readout's sum also counts towards depth: the depth of the shallowest equivalent tree, less the two levels that linear scaling adds, uncounted, for every arm.
+  - The full readout is charged even when the fit gives a tree zero weight (a constant tree): it is part of A4's fixed representation, as a constant subtree is part of an A1 program.
   - The synthetic targets are sums of top-level units, which favours a linear readout. This is a caveat for the paper.
 
 ## 4. Variation operators
@@ -98,15 +101,18 @@ Selection is epsilon-lexicase (regression) or lexicase (Boolean), with linear sc
 **Goal:** the G2 decision. "A hierarchical arm beats tree GP at two or more budgets on at least half the Stage 1 tasks."
 
 **Tuning**
-- 20 random configurations per arm, from arm-specific ranges covering the operator rates, module counts and depths.
-- Tuning runs on **separate tuning tasks**: synthetic instances 100–102 with (L, R, noise) = (2, 2, 1%), (3, 3, 1%), (4, 2, 1%), and even-5 parity.
+- 20 configurations per arm, from arm-specific ranges covering the operator rates, module counts and depths: the default plus 19 random, all distinct in the settings the arm actually runs with (redrawn on a duplicate).
+  - CGP has no operator rates to tune (single-active mutation), so A3 tunes its grid (rows 1/2/4, columns 50–300, levels-back 20–100% of the columns), and A3-lb1 and A3-lbmax tune their number of rows (2–40). Their 6 columns and levels-back are the ablation itself. The number of constants is not tuned: it has no effect on Boolean tasks, and tuning it made most CGP configurations duplicates (pre-CERES review).
+- Tuning runs on **separate tuning tasks**: synthetic instances 100–102 with (L, R, noise) = (2, 2, 1%), (3, 3, 1%), (4, 2, 1%), and even-5 parity. Even-5 is therefore **not** a screening task: parity has no instances, so it is the same task whatever the seed (pre-CERES review).
+- Tuning runs checkpoint every 25 generations.
+- The report writes the chosen configurations only when every planned tuning run is present.
 - 5 seeds per configuration, at budget 1e10.
 - Each configuration is ranked by median validation error on the tuning tasks, and the best one is fixed for that arm.
 - The tuning budget is identical for every arm, and the screening and test tasks (instances 0–2) are never used.
 
 **Screening grid**
 - The 48 synthetic cells (L 1–4 × R 1–4 × noise 0/1/10%), instance 0.
-- Even-parity 5–8 and 11-multiplexer.
+- Even-parity 6–8 and 11-multiplexer (even-5 is a tuning task).
 - Budgets 1e8 to 1e11 (four of the five levels; 1e12 is kept for WP3), and 10 seeds per cell.
 
 **Arms screened:** A1, A2, A3, A3-lb1, A3-lbmax, A4, A5, A6, A6-inputs.
@@ -118,6 +124,8 @@ Selection is epsilon-lexicase (regression) or lexicase (Boolean), with linear sc
 - An arm beats tree GP at a budget if the difference is significant and A1 has the higher median error.
 - G2 passes if one hierarchical arm, specified before the runs, achieves two or more budgets on at least half the Stage 1 tasks.
 - The arm is specified as A5 or A6, whichever scores more on the tuning tasks. Fixing it in advance avoids multiple comparisons over arms.
+  - Rule: compare the tuned A5 and tuned A6 on each tuning task by median error (Boolean: then median units to solution); the arm better on more tasks is the G2 arm, and a tie goes to A5. The tuning report writes it to `tuned.yaml` (`g2_arm`), and the G2 test reads it from there.
+- The G2 verdict needs every planned run of A1 and the G2 arm; "half the tasks" is half of all planned tasks. Missing runs give INCOMPLETE, never PASS.
 
 ## 7. Build order
 

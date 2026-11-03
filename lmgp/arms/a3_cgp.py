@@ -218,5 +218,7 @@ VARIANTS = {
 }
 
 
-def make_a3(name: str, pset: PrimitiveSet, cfg: CGPConfig | None = None) -> CGPArm:
-    return CGPArm(pset, replace(cfg or CGPConfig(), **VARIANTS[name]), name=name)
+def make_a3(name: str, pset: PrimitiveSet, cfg: CGPConfig | None = None, **params) -> CGPArm:
+    """The variant's settings override `cfg`; explicit `params` (e.g. tuned
+    ones) override both."""
+    return CGPArm(pset, replace(replace(cfg or CGPConfig(), **VARIANTS[name]), **params), name=name)

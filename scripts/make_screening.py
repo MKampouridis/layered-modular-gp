@@ -2,14 +2,18 @@
 the runs, apply the G2 test.
 
   python scripts/make_screening.py write [--seeds 10]
-  python scripts/make_screening.py g2 --results results/screening --arm a5
+  python scripts/make_screening.py g2 --results results/screening [--arm a5|a6] [--allow-partial]
 
 G2 (research plan): a hierarchical arm beats tree GP at two or more budgets
 on at least half the Stage 1 tasks. Per task and budget: one-sided
 Mann-Whitney U on test error (regression: test MSE; Boolean: final training
 error, the task being the whole truth table), Holm-corrected over the
 budgets of that task; "beats" needs p < 0.05 and a lower median than A1.
-The arm tested is fixed before the runs (--arm, chosen from the tuning).
+The arm tested is fixed before the runs: g2_arm in tuned.yaml, written by
+the tuning report (--arm overrides it, for exploration only). The verdict
+needs every planned (arm, task, budget, seed) run of A1 and that arm; the
+"half the tasks" threshold is over all planned tasks. With --allow-partial
+the table is printed but the verdict is INCOMPLETE.
 """
 from __future__ import annotations
 
@@ -33,7 +37,8 @@ BUDGETS = [1e8, 1e9, 1e10, 1e11]
 def stage1_tasks():
     tasks = [{"kind": "comp", "levels": L, "reuse": R, "noise": z, "instance": 0}
              for L in (1, 2, 3, 4) for R in (1, 2, 3, 4) for z in (0.0, 0.01, 0.1)]
-    tasks += [{"kind": "parity", "n": n} for n in (5, 6, 7, 8)]
+    # Even-5 is a tuning task (lmgp/run/tuning.py), so it is not screened.
+    tasks += [{"kind": "parity", "n": n} for n in (6, 7, 8)]
     tasks += [{"kind": "mux", "k": 3}]  # 11-multiplexer; the 20-multiplexer waits for WP3
     return tasks
 
@@ -63,21 +68,30 @@ def holm(p):
     return adj
 
 
-def g2(results: str, arm: str, alpha=0.05):
+def g2(results: str, arm: str | None, alpha=0.05, allow_partial=False):
     from scipy.stats import mannwhitneyu
 
+    if arm is None:
+        arm = yaml.safe_load((OUT / "tuned.yaml").read_text())["g2_arm"]
     batch = yaml.safe_load((OUT / "screening.yaml").read_text())
-    rows = []
+    planned = sorted({task_label(c["task"]) for c in expand_batch(batch)})
+    rows, missing = [], []
     for cfg in expand_batch(batch):
         if cfg["arm"] not in ("a1", arm):
             continue
         f = Path(results) / run_id(cfg) / "final.parquet"
-        if f.exists():
+        if not f.exists():
+            missing.append(run_id(cfg))
+        else:
             r = pd.read_parquet(f).iloc[0]
             boolean = cfg["task"]["kind"] in ("parity", "mux")
             rows.append({"arm": cfg["arm"], "task": task_label(cfg["task"]), "budget": cfg["budget"],
                          "err": float(r["best_train"] if boolean else r["test_mse"])})
     df = pd.DataFrame(rows)
+    if missing:
+        print(f"{len(missing)} planned runs of a1/{arm} missing, e.g.:\n  " + "\n  ".join(missing[:20]))
+        if not allow_partial:
+            raise SystemExit("incomplete screening: no G2 verdict (use --allow-partial to look anyway)")
     out, wins = [], {}
     for task, g in df.groupby("task"):
         ps, meds = [], []
@@ -100,10 +114,11 @@ def g2(results: str, arm: str, alpha=0.05):
         wins[task] = n_win
     table = pd.DataFrame(out)
     n_pass = sum(v >= 2 for v in wins.values())
-    verdict = n_pass >= len(wins) / 2
+    verdict = n_pass >= len(planned) / 2  # over all planned tasks, not those found
     print(table.to_string(index=False, float_format=lambda v: f"{v:.3g}"))
-    print(f"\n{arm} beats A1 at >= 2 budgets on {n_pass} of {len(wins)} tasks -> G2 {'PASS' if verdict else 'FAIL'}")
-    return table, verdict
+    label = "INCOMPLETE" if missing else ("PASS" if verdict else "FAIL")
+    print(f"\n{arm} beats A1 at >= 2 budgets on {n_pass} of {len(planned)} planned tasks -> G2 {label}")
+    return table, (None if missing else bool(verdict))
 
 
 if __name__ == "__main__":
@@ -111,6 +126,7 @@ if __name__ == "__main__":
     ap.add_argument("mode", choices=["write", "g2"])
     ap.add_argument("--seeds", type=int, default=10)
     ap.add_argument("--results", default="results/screening")
-    ap.add_argument("--arm", default="a5")
+    ap.add_argument("--arm", default=None, help="default: g2_arm from configs/wp2/tuned.yaml")
+    ap.add_argument("--allow-partial", action="store_true")
     a = ap.parse_args()
-    write(a.seeds) if a.mode == "write" else g2(a.results, a.arm)
+    write(a.seeds) if a.mode == "write" else g2(a.results, a.arm, allow_partial=a.allow_partial)

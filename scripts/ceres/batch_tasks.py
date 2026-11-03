@@ -5,7 +5,9 @@
 
 Task i is run i of `expand_batch(CONFIG)`, so the numbering is fixed by the
 config alone. `run` executes tasks I .. I+K-1, skipping any whose
-final.parquet already exists, so an element can be resubmitted safely.
+final.parquet already exists (written last and atomically), and any that
+another live job is running (its RUNNING lock was touched in the last 30
+minutes), so an element can be resubmitted safely.
 `status` prints how many tasks are done and the matching qsub line.
 """
 from __future__ import annotations
@@ -37,13 +39,17 @@ def main(argv=None):
               f"{n_el} array elements at COUNT={a.count}")
         print(f"qsub -t 1-{n_el} -tc 60 -v CONFIG={a.config},COUNT={a.count},OUT={out} scripts/ceres/runs.sge")
         return 0
-    from lmgp.run.runner import run_config
+    from lmgp.run.runner import RunLocked, run_config
 
     for i in range(a.index, min(a.index + a.count, len(runs))):
         if done[i]:
             print(f"task {i}: {run_id(runs[i])} already done", flush=True)
             continue
-        r = run_config(runs[i], out)
+        try:
+            r = run_config(runs[i], out)
+        except RunLocked as e:
+            print(f"task {i}: skipped, {e}", flush=True)
+            continue
         print(json.dumps({"task": i, **{k: r.get(k) for k in ("run_id", "units", "evals", "wall", "solved",
                                                              "test_r2")}}, default=str), flush=True)
     return 0

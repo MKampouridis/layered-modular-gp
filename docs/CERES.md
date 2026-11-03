@@ -63,6 +63,10 @@ rsync -av <user>@ceres.essex.ac.uk:layered-modular-gp/results/pilot_ceres result
 ## 3. A batch of runs
 
 Any batch config under `configs/` works. Task *i* is run *i* of the config, so the numbering depends only on the config. Finished runs are skipped, so an element that failed or was stopped can simply be resubmitted.
+- Each run writes its outputs atomically, `final.parquet` last, so a half-written run never counts as finished.
+- A run in progress holds a `RUNNING` lock in its folder and touches it every generation. Another job reaching the same run skips it while the lock was touched in the last 30 minutes, and takes it over if older (the first job died).
+- **Do not resubmit elements that `qstat` shows as suspended (state `s` or `S`).** A suspended job stops touching its lock, so after 30 minutes a resubmission would run it a second time.
+- Each `final.parquet` records the `git_commit` captured when the run started. Do not `git pull` on CERES while a campaign is running; if you must, check afterwards that the collected results share one commit.
 
 ```bash
 cd ~/layered-modular-gp && git pull && mkdir -p logs && source scripts/ceres/env.sh

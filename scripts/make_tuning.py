@@ -3,7 +3,14 @@ rank each arm's configurations and write the chosen ones
 (configs/wp2/tuned.yaml).
 
   python scripts/make_tuning.py write
-  python scripts/make_tuning.py report --results results/tuning
+  python scripts/make_tuning.py report --results results/tuning [--allow-partial]
+
+The report refuses to write tuned.yaml unless every planned run is present
+(--allow-partial prints the ranking from what exists, writes nothing). It
+also fixes, before screening, which of A5 and A6 the G2 test uses (g2_arm):
+the tuned A5 and tuned A6 are compared on each tuning task (median error;
+Boolean: then median units to solution), and the arm better on more tasks is
+chosen; a tie goes to A5, the main hypothesis.
 """
 from __future__ import annotations
 
@@ -15,7 +22,7 @@ import pandas as pd
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lmgp.run.config import expand_batch, run_id  # noqa: E402
+from lmgp.run.config import expand_batch, run_id, task_label  # noqa: E402
 from lmgp.run.tuning import configurations, rank_configs, tuning_batch  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,34 +39,68 @@ def write():
     print(f"{len(expand_batch(batch))} runs -> {OUT / 'tuning.yaml'}")
 
 
-def report(results):
+def _task_score(g, kind):
+    """Median score of one (arm, config) on one task; lower is better."""
+    if kind == "boolean":
+        return (g["best_train"].median(), g["units_to_solution_or_budget"].median())
+    return (g["val_mse"].median(),)
+
+
+def choose_g2_arm(df, chosen) -> tuple[str, dict]:
+    score = {"a5": 0, "a6": 0}
+    for task, g in df.groupby("task"):
+        kind = g["kind"].iloc[0]
+        s = {a: _task_score(g[(g.arm == a) & (g.tuning_config == chosen[a]["tuning_config"])], kind)
+             for a in ("a5", "a6")}
+        if s["a5"] != s["a6"]:
+            score[min(s, key=s.get)] += 1
+    return ("a6" if score["a6"] > score["a5"] else "a5"), score
+
+
+def report(results, allow_partial=False):
     batch = yaml.safe_load((OUT / "tuning.yaml").read_text())
-    rows = []
+    rows, missing = [], []
     for cfg in expand_batch(batch):
         f = Path(results) / run_id(cfg) / "final.parquet"
-        if f.exists():
+        if not f.exists():
+            missing.append(run_id(cfg))
+        else:
             r = pd.read_parquet(f).iloc[0].to_dict()
             r["tuning_config"] = cfg["tuning_config"]
+            r["arm"] = cfg["arm"]
+            r["task"] = task_label(cfg["task"])
             r["kind"] = "boolean" if cfg["task"]["kind"] in ("parity", "mux") else "regression"
             u = r.get("units_to_solution")
             r["units_to_solution_or_budget"] = u if u is not None and u == u else cfg["budget"]
             rows.append(r)
     df = pd.DataFrame(rows)
     print(f"{len(df)} of {len(expand_batch(batch))} tuning runs found")
+    if missing:
+        print(f"{len(missing)} runs missing, e.g.:\n  " + "\n  ".join(missing[:20]))
+        if not allow_partial:
+            raise SystemExit("incomplete tuning: tuned.yaml NOT written (finish the runs, "
+                             "or use --allow-partial to only look at the ranking)")
     ranks = rank_configs(df)
     best = ranks.groupby("arm").head(1)
+    print(best.to_string(index=False))
+    if missing:
+        print("\n--allow-partial: nothing written")
+        return
     chosen = {row.arm: {"tuning_config": int(row.tuning_config), "mean_rank": float(row.mean_rank),
                         "arm_params": configurations(row.arm)[int(row.tuning_config)]}
               for row in best.itertuples()}
+    g2_arm, score = choose_g2_arm(df, chosen)
+    print(f"\nG2 arm: {g2_arm} (tuning tasks won: A5 {score['a5']}, A6 {score['a6']}; tie -> A5)")
     (OUT / "tuned.yaml").write_text("# Chosen configuration per arm (scripts/make_tuning.py report).\n"
-                                    + yaml.safe_dump(chosen, sort_keys=True))
+                                    + yaml.safe_dump({**chosen, "g2_arm": g2_arm,
+                                                      "g2_arm_tasks_won": score}, sort_keys=True))
     ranks.to_csv(OUT / "tuning_ranks.csv", index=False)
-    print(best.to_string(index=False))
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("mode", choices=["write", "report"])
     ap.add_argument("--results", default="results/tuning")
+    ap.add_argument("--allow-partial", action="store_true")
     a = ap.parse_args()
-    write() if a.mode == "write" else report(a.results)
+    write() if a.mode == "write" else report(a.results, a.allow_partial)

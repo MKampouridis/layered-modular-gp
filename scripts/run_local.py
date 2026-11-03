@@ -19,11 +19,14 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lmgp.run.config import expand_batch, load_yaml, run_id  # noqa: E402
-from lmgp.run.runner import run_config  # noqa: E402
+from lmgp.run.runner import RunLocked, run_config  # noqa: E402
 
 
 def _one(cfg, out):
-    r = run_config(cfg, out)
+    try:
+        r = run_config(cfg, out)
+    except RunLocked as e:
+        return f"skipped: {e}", None, None, 0.0
     return r["run_id"], r.get("solved"), r.get("test_r2"), r["wall"]
 
 

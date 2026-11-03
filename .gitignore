@@ -8,3 +8,4 @@ data/
 *.log
 config/paths.toml
 .handover.json
+logs/
