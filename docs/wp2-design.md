@@ -94,7 +94,7 @@ MMTGP's adaptive operator rates and its EDA terminal mutation are **not** reprod
 
 ## 5. Shared loop
 
-Selection is epsilon-lexicase (regression) or lexicase (Boolean), with linear scaling, the counter and the stopping rule all unchanged. For every arm, an offspring that breaks the cap is retried up to 10 times and the parent is copied after that.
+Selection is epsilon-lexicase (regression) or lexicase (Boolean), with linear scaling, the counter and the stopping rule all unchanged. For every arm, an offspring that breaks the cap, **or is identical to a parent in its active code** (a change to dead code only), is retried up to 10 times, and the parent is copied after that **[flag, pre-CERES review]**. CGP constants are leaves charged per read, as constants are in every other arm.
 
 ## 6. Screening protocol (WP2)
 
@@ -103,6 +103,7 @@ Selection is epsilon-lexicase (regression) or lexicase (Boolean), with linear sc
 **Tuning**
 - 20 configurations per arm, from arm-specific ranges covering the operator rates, module counts and depths: the default plus 19 random, all distinct in the settings the arm actually runs with (redrawn on a duplicate).
   - CGP has no operator rates to tune (single-active mutation), so A3 tunes its grid (rows 1/2/4, columns 50–300, levels-back 20–100% of the columns), and A3-lb1 and A3-lbmax tune their number of rows (2–40). Their 6 columns and levels-back are the ablation itself. The number of constants is not tuned: it has no effect on Boolean tasks, and tuning it made most CGP configurations duplicates (pre-CERES review).
+  - A4 tunes its tree count (10, 14, 20 or 24) with the published proportions kept: half the trees read the inputs and the window is half the trees (pre-CERES review).
 - Tuning runs on **separate tuning tasks**: synthetic instances 100–102 with (L, R, noise) = (2, 2, 1%), (3, 3, 1%), (4, 2, 1%), and even-5 parity. Even-5 is therefore **not** a screening task: parity has no instances, so it is the same task whatever the seed (pre-CERES review).
 - Tuning runs checkpoint every 25 generations.
 - The report writes the chosen configurations only when every planned tuning run is present.
@@ -125,6 +126,7 @@ Selection is epsilon-lexicase (regression) or lexicase (Boolean), with linear sc
 - G2 passes if one hierarchical arm, specified before the runs, achieves two or more budgets on at least half the Stage 1 tasks.
 - The arm is specified as A5 or A6, whichever scores more on the tuning tasks. Fixing it in advance avoids multiple comparisons over arms.
   - Rule: compare the tuned A5 and tuned A6 on each tuning task by median error (Boolean: then median units to solution); the arm better on more tasks is the G2 arm, and a tie goes to A5. The tuning report writes it to `tuned.yaml` (`g2_arm`), and the G2 test reads it from there.
+- The per-run score is test MSE on regression. On Boolean tasks it is units to solution ÷ budget for a solved run and 1 + final error for an unsolved one, so solving with less compute counts (pre-CERES review).
 - The G2 verdict needs every planned run of A1 and the G2 arm; "half the tasks" is half of all planned tasks. Missing runs give INCOMPLETE, never PASS.
 
 ## 7. Build order

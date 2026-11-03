@@ -38,13 +38,32 @@ Reviewed and found sound (by at least two reviewers):
 - cached modules are charged once;
 - A5-copy's cost equals its expanded size.
 
-**G1 after these changes.** A1 is unchanged: every A1 node is live. A2 was re-run on the Boolean tasks again; see the table below, now updated. ADFs cut even-5 effort by **12.1×** (2.40e8 against 2.90e9 units). 237 tests pass.
+**Antigravity's review** (commit `f85d210`) arrived after the fixes above. Five of its 11 findings were already fixed: A2's dead arguments, even-5, A5-copy, CGP tuning duplicates with the A5/A6 rule, and A4's readout. Six were new; each was checked and fixed:
+
+| # | Finding | Decision |
+| --- | --- | --- |
+| 14 | **The G2 test could not detect wins on Boolean tasks.** Runs stop at a solution with error 0, so once A1 solved half its runs no arm could beat it, however little compute it needed. | **[flag]** The G2 score on Boolean tasks is units to solution ÷ budget for a solved run, and 1 + final error for an unsolved one. Any solved run beats any unsolved one; solved runs are ordered by compute used. Regression still uses test MSE. |
+| 15 | **Many offspring changed only dead code.** Measured on 40-generation runs: A2 29–34%, A4 23–47%, A6 25–34%, A5 9–21%, against A1 2–6% and A3 0% (CGP's mutation guarantees an active change). | **[flag: fairness]** One rule for every arm: an offspring identical to a parent in active code is retried like an invalid one. No-ops are now 0–6% for every arm (the remainder are parent copies after 10 failed tries). |
+| 16 | `mse()` ranked NaN/Inf predictions better than finite ones with MSE above 1e30, which could corrupt champion selection. | `mse()` caps per-case error exactly as the fitness does, so non-finite is always worst. |
+| 17 | CGP charged a constant once per program (as a cached module), where every other arm pays per read. | **[flag: counter]** CGP constants are ERC leaves, charged 1 per read. |
+| 18 | A4's tuning space was broken: `n_trees` varied with the input and window sizes fixed at 10, so 10 trees had no second layer and 30 trees almost never initialised within the cap. | `n_trees` ∈ {10, 14, 20, 24}, with half the trees reading the inputs and a window of half the trees (the published proportions). Hierarchical initialisation falls back from "full" to "grow" before accepting a duplicate. |
+| 19 | Minor: inlined sizes were computed for inactive CGP nodes (wasted time); screening had no checkpoints; the generation count was off by one at the budget boundary. | All fixed. |
+
+Not changed:
+- A3-lb1 and A3-lbmax are limited to depth 6 by their 6 columns. That is the ablation's documented design, not a bug.
+- A4's readout is not covered by the reference interpreter; it has its own test.
+- `encapsulate` often yields a structural rather than a functional change. With rule 15, its true no-ops are now retried, and its rate is tuned.
+
+A 150-generation drift check of all 11 arms after these changes: cost ≤ expanded size everywhere, no reference mismatches, no growth, and time per generation similar or lower. 243 tests pass.
+
+**G1 after these changes.** A1 is unchanged: every A1 node is live. *Superseded by finding 15, which changes A1's search too:* A2 was re-run on the Boolean tasks again, and ADFs cut even-5 effort by **12.1×** (2.40e8 against 2.90e9 units). A1 and A2 are being re-run once more; the SRBench check (A1) will be re-run on CERES.
 
 **Next**
 1. Michael: CERES setup, then the pilot array (`docs/CERES.md` §1–2). It measures speed only, so it can start now. Then the portability check (§ "Portability check").
-2. The even-6 G1 batch (`configs/g1/parity6.yaml`, 60 runs) on CERES, as the first real batch through the pipeline.
-3. From the pilot timings: decide whether screening keeps the 1e11 budget, and whether A2 needs Numba (its cheap programs make wall time per unit about 10× A1's).
-4. The tuning campaign (`configs/wp2/tuning.yaml`, regenerated: 3,600 runs, 20 distinct configurations per arm, checkpointed), then `make_tuning.py report`, `make_screening.py write`, the screening, and the G2 test. Ask Michael at the G2 gate.
+2. The even-6 G1 batch (`configs/g1/parity6.yaml`, 60 runs) and the SRBench G1 check (`configs/g1/srbench.yaml`) on CERES, as the first real batches through the pipeline.
+3. ChatGPT re-review of the changes since `7b85581`, before the tuning campaign.
+4. From the pilot timings: decide whether screening keeps the 1e11 budget, and whether A2 needs Numba (its cheap programs make wall time per unit about 10× A1's).
+5. The tuning campaign (`configs/wp2/tuning.yaml`, regenerated: 3,600 runs, 20 distinct configurations per arm, checkpointed), then `make_tuning.py report`, `make_screening.py write`, the screening, and the G2 test. Ask Michael at the G2 gate.
 
 ## 3 November 2026 (MacBook Pro) — slow A2 run diagnosed: a hole in the size cap
 
