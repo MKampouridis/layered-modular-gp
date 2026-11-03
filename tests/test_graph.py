@@ -47,15 +47,15 @@ def _add_mm(cached):
 
 def test_cached_module_charged_once_per_evaluation():
     p = _add_mm(True)
-    assert p.cost_per_case() == 3 + 3  # module once, plus the output tree (add + two reads)
-    assert ComputeCounter.cost(p, 10) == 60
-    assert reference_eval_graph(p, data(p.pset, 10))[1] == 60
+    assert p.cost_per_case() == 3 + 1  # module once, plus the output's add; module reads are free
+    assert ComputeCounter.cost(p, 10) == 40
+    assert reference_eval_graph(p, data(p.pset, 10))[1] == 40
 
 
 def test_copy_mode_charges_every_read():
     p = _add_mm(False)
-    assert p.cost_per_case() == 3 + 2 * 3
-    assert reference_eval_graph(p, data(p.pset, 10))[1] == 90
+    assert p.cost_per_case() == 1 + 2 * 3 == p.expanded_size()  # charged as the inlined tree
+    assert reference_eval_graph(p, data(p.pset, 10))[1] == 70
 
 
 def test_inlined_size_and_depth_hand_example():
@@ -90,7 +90,7 @@ def test_copy_equals_cached_semantics_and_costs_at_least_as_much():
         q = GraphProgram(p.pset, p.levels, p.codes, p.args, cached=False)
         np.testing.assert_allclose(p.evaluate(X), q.evaluate(X), equal_nan=True)
         assert q.cost_per_case() >= p.cost_per_case()
-        assert q.expanded_size() == p.expanded_size()
+        assert q.expanded_size() == p.expanded_size() == q.cost_per_case()  # no sharing: the inlined cost
 
 
 def test_identical_programs_cost_the_same(harm):
@@ -210,8 +210,10 @@ def test_a4_valid_window_and_accounting(pname):
                 q = GraphProgram(p.pset, p.levels, list(p.codes[:20]) + [[REF]], list(p.args[:20]) + [[k]])
                 out, cnt = reference_eval_graph(q, X)
                 np.testing.assert_allclose(F[:, k], out, rtol=1e-9, atol=1e-12, equal_nan=True)
-            assert p.cost_per_case() == sum(len(c) for c in p.codes[:20])
-            assert p.expanded_size() == sum(len(_inline(p, k)[0]) for k in range(20))
+            own = sum(sum(1 for c, a in zip(p.codes[k], p.args[k]) if not (c == REF and a >= 0))
+                      for k in range(20))
+            assert p.cost_per_case() == own + 2 * 19  # trees once, plus the readout beyond a + b f
+            assert p.expanded_size() == sum(len(_inline(p, k)[0]) for k in range(20)) + 2 * 19
         else:
             out, cnt = reference_eval_graph(p, X)
             assert cnt == p.cost_per_case() * X.shape[0]
@@ -249,13 +251,20 @@ def test_cgp_valid_and_cost_matches_reference(v, pname):
             np.testing.assert_allclose(out, p.evaluate(X), rtol=1e-9, atol=1e-12, equal_nan=True)
 
 
+def _active_graph(p):
+    """The executed part of a CGP program: functions, connections and constants
+    of the active nodes, and the output gene."""
+    consts, funcs, conns, out = p.genes
+    act = [k for k in range(p.n_modules) if p.active[k]]
+    return tuple((k, p.codes[k], p.args[k]) for k in act) + (p.args[p.out],)
+
+
 def test_cgp_single_active_mutation_changes_an_active_gene():
     arm = make_a3("a3", regression_set(3))
     rng = np.random.default_rng(1)
-    for p in arm.init_population(30, rng):
+    for p in arm.init_population(50, rng):
         q = arm.mutate(p, rng)
-        # the active part of the genotype differs (the phenotype graph changed)
-        assert (q.codes, q.args) != (p.codes, p.args) or q.genes[3] != p.genes[3]
+        assert _active_graph(q) != _active_graph(p)
 
 
 def test_cgp_levels_back_one_is_strictly_layered():
@@ -270,3 +279,98 @@ def test_cgp_levels_back_one_is_strictly_layered():
                     assert s[0] in ("in", "const")
                 else:
                     assert s[0] == "node" and s[1] // rows == i // rows - 1
+
+
+
+# ---- after the WP2 independent review ------------------------------------------------------
+ALL_GRAPH_ARMS = list(VARIANTS) + list(CGP_VARIANTS) + ["a4"]
+
+
+@pytest.mark.parametrize("arm", ALL_GRAPH_ARMS)
+@pytest.mark.parametrize("task", [{"kind": "comp", "levels": 2, "reuse": 2, "noise": 0.0},
+                                  {"kind": "parity", "n": 4}])
+def test_graph_arms_deterministic(arm, task):
+    from lmgp.run.runner import Run
+
+    cfg = {"arm": arm, "task": task, "pop_size": 40, "max_generations": 6, "seed_index": 3,
+           "stop_on_solution": False}
+    a, b = Run(dict(cfg)).execute(), Run(dict(cfg)).execute()
+    for k in ("units", "evals", "best_train", "model"):
+        assert a[k] == b[k], k
+
+
+@pytest.mark.parametrize("arm", ALL_GRAPH_ARMS)
+def test_graph_arms_resume_from_checkpoint(arm, tmp_path):
+    import pickle
+
+    from lmgp.run.runner import Run
+
+    cfg = {"arm": arm, "task": {"kind": "comp", "levels": 2, "reuse": 2, "noise": 0.0},
+           "pop_size": 40, "max_generations": 7, "seed_index": 2, "checkpoint_every": 3}
+    full = Run(cfg, tmp_path / "a").execute()
+    r = Run({**cfg, "max_generations": 4}, tmp_path / "b")
+    r._final = lambda *a: (_ for _ in ()).throw(KeyboardInterrupt)
+    with pytest.raises(KeyboardInterrupt):
+        r.execute()
+    ck = tmp_path / "b" / r.id / "ckpt.pkl"
+    assert pickle.loads(ck.read_bytes())["gen"] == 3
+    r2 = Run(cfg, tmp_path / "b")
+    r2.id, r2.out = r.id, tmp_path / "b" / r.id
+    resumed = r2.execute()
+    for k in ("model", "units", "evals", "test_mse", "generations"):
+        assert resumed[k] == full[k], k
+
+
+def test_private_copies_share_nothing_and_keep_the_function():
+    ps = regression_set(3)
+    arm = make_hier("a5_copy", ps, CFG)
+    for p in bred(arm):
+        readers = {}
+        for b in [p.out] + [k for k in range(p.n_modules) if p.active[k]]:
+            for t in p.refs(b):
+                readers[t] = readers.get(t, 0) + 1
+        assert all(v == 1 for v in readers.values())
+        assert p.cost_per_case() == p.expanded_size()
+    # unsharing a shared program keeps its function and inlined size
+    shared = make_hier("a5", ps, CFG)
+    X = data(ps)
+    for p in bred(shared):
+        q = arm._finish(list(p.levels), [list(c) for c in p.codes], [list(a) for a in p.args])
+        np.testing.assert_allclose(q.evaluate(X), p.evaluate(X), equal_nan=True)
+        assert q.expanded_size() == p.expanded_size()
+
+
+@pytest.mark.parametrize("mode", ["dense", "inputs"])
+def test_a6_connectivity_independently(mode):
+    name = "a6" if mode == "dense" else "a6_inputs"
+    arm = make_hier(name, regression_set(3), CFG)
+    L = arm.cfg.levels
+    for p in bred(arm):
+        for b in range(p.out + 1):
+            lvl = p.levels[b] if b < p.out else L + 1
+            for c, a in zip(p.codes[b], p.args[b]):
+                if c == REF and a >= 0:
+                    assert p.levels[a] < lvl if mode == "dense" else p.levels[a] == lvl - 1
+
+
+def test_min_modules_respected_after_pruning():
+    arm = make_hier("a5", regression_set(3), HierArmConfig(levels=2, min_modules=2, max_modules=4))
+    ps = arm.pset
+    # three level-1 modules, two level-2 modules both reading M0, output reads both
+    levels = [1, 1, 1, 2, 2]
+    codes = [[REF], [REF], [REF], [REF], [REF], [0, REF, REF]]
+    args = [[input_ref(0)], [input_ref(1)], [input_ref(2)], [0], [0], [0, 3, 4]]
+    p = arm._finish(levels, codes, args)
+    assert sum(1 for l in p.levels if l == 1) == 2 and arm.is_valid(p)
+
+
+@pytest.mark.parametrize("v", list(VARIANTS))
+@pytest.mark.parametrize("op", ["crossover", "mutate", "rewire", "encapsulate", "delete"])
+def test_each_operator_every_variant(v, op):
+    arm = make_hier(v, regression_set(3), CFG)
+    rng = np.random.default_rng(6)
+    pop = arm.init_population(30, rng)
+    for i in range(80):
+        a, b = pop[i % 30], pop[(i * 7 + 1) % 30]
+        child = arm.crossover(a, b, rng) if op == "crossover" else getattr(arm, op)(a, rng)
+        assert child.is_well_formed()

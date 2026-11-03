@@ -24,10 +24,14 @@ That keeps the compute counter identical by construction.
 
 ## 2. Compute accounting (the same counter as A1/A2) **[flag]**
 
-- **One unit per node executed per training case.** A REF leaf is a node, costing 1, exactly like a variable leaf in a tree.
+- **One unit per node of the equivalent inlined tree that is executed, per training case** (revised 3 November 2026 after the independent review; this rule also applies to A2).
+  - Function, constant and input-REF nodes cost 1. An input REF is a variable leaf.
+  - A module REF costs 0. It only passes on a value already computed and vanishes on inlining, as A2's call and argument nodes do; those now also cost 0.
+  - So a program without reuse costs exactly what A1 pays for the same function.
+  - The first version charged every REF 1 unit. That made the graph arms pay 20–50% more than A1 for the same function, by a different amount per arm.
 - **Cost per case** = the sum of body sizes of the active modules + the output tree size.
-- **A cached module output is charged once per program evaluation**, the G1 criterion deferred to WP2. Every further read costs only its REF node.
-- **A5-copy** turns caching off: every REF re-executes the referenced module, recursively, and is charged in full. It is the same program with sharing removed.
+- **A cached module output is charged once per program evaluation**, the G1 criterion deferred to WP2. Further reads are free.
+- **A5-copy** gives every module read a private copy, in its genes as well as its computation. After every operator, a module read by several REFs is duplicated, so each REF owns its module. Its cost therefore equals its expanded size, as for a tree. The per-level module limit is lifted for A5-copy; the shared expanded-size cap bounds it.
 - **Expanded size** is the size of the fully inlined tree: each REF is replaced by a copy of the referenced module's inlined body. Expanded depth is defined the same way.
   - The cap stays at 500 expanded nodes and depth 17, identical for all arms, as CLAUDE.md requires.
   - Reuse therefore cannot buy a larger function. What it can buy is cheaper evaluation, since cost per case is less than expanded size, so more evaluations fit in a budget. It also gives a more compact genotype for search to work on.
@@ -51,7 +55,10 @@ That keeps the compute counter identical by construction.
 
 - **A5's module bodies:** grow trees, initial depth 1–2 and depth at most 4 per module. A single-REF module is a pass-through, so programs whose true structure has fewer than L levels stay expressible.
 - **A5 and A6 initialisation:** each level starts with 2–4 modules, drawn uniformly, plus a ramped output tree.
-- **A4's readout [flag]:** A4's least-squares readout is part of its published representation. The other arms use the standard two-parameter linear scaling of a single output. I keep A4 as published so that it is a faithful baseline, and note the extra readout parameters as a caveat in the paper.
+- **A4's readout [flag]:** A4's least-squares readout is part of its published representation. The other arms use the standard two-parameter linear scaling of a single output.
+  - I keep A4 as published so that it is a faithful baseline.
+  - Fitting the readout is not charged, as linear scaling is not. But its k − 1 extra weighted terms beyond a + b·f are charged and counted as nodes: 2(k − 1) per case, in both cost and expanded size (revised after the review).
+  - The synthetic targets are sums of top-level units, which favours a linear readout. This is a caveat for the paper.
 
 ## 4. Variation operators
 
@@ -65,10 +72,11 @@ All rates are config parameters. In WP2 they are set by the equal-effort tuning 
    - Choose a module M at level l < L and a subtree S of its body of depth ≥ 1. S reads exactly what M may read, so it is a valid level-l module.
    - Add S as a new module N at level l, then re-point one random REF at level l+1, or in the output tree if l = L, to N.
    - If level l is full, the operator is not applied.
+   - **Encapsulation is not semantics-preserving.** Strict levels rule out replacing S inside M by a read of N, because M would then read its own level. The operator is therefore a structured mutation that offers a useful subtree as a reusable module one level up.
 5. **Deletion.** Remove one random module of a level holding more than one, and re-point every REF to it to another module of the same level. In addition, *unused* modules (inactive and unreferenced) are removed after every operator. They would never be evaluated, but they distort stored size and the structure-recovery measures.
 
 **The ablations use the same operators:**
-- **A5-copy** is A5 with caching off (§2).
+- **A5-copy** is A5 with private copies (§2).
 - **A5-frozen** draws levels 1 … L−1 at random once and never varies them; only level L and the output tree evolve.
 
 **A4** uses its published operators:

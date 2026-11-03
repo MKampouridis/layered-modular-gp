@@ -141,6 +141,9 @@ def versions() -> dict:
     }
 
 
+ARM_STATE = ("frozen", "init_stats")  # arm attributes set during a run, checkpointed with it
+
+
 class Run:
     def __init__(self, cfg: dict, out_dir: str | Path | None = None):
         self.cfg = deep_merge(DEFAULTS, cfg)
@@ -174,6 +177,8 @@ class Run:
             counter = ComputeCounter.from_state(st["counter"])
             gen, pop, errs, fits, scal = st["gen"], st["pop"], st["errs"], st["fits"], st["scal"]
             S, log = st["S"], st["log"]
+            for k, v in st.get("arm_state", {}).items():
+                setattr(arm, k, v)
         else:
             rng = make_rng(self.seed, 1)
             counter = ComputeCounter(cfg["budget"])
@@ -208,7 +213,9 @@ class Run:
                 tmp = ck.with_suffix(".tmp")
                 tmp.write_bytes(pickle.dumps({
                     "rng": rng.bit_generator.state, "counter": counter.state(), "gen": gen, "pop": pop,
-                    "errs": errs, "fits": fits, "scal": scal, "S": S, "log": log}))
+                    "errs": errs, "fits": fits, "scal": scal, "S": S, "log": log,
+                    # run-level arm state, e.g. A5-frozen's shared random levels
+                    "arm_state": {k: getattr(arm, k) for k in ARM_STATE if hasattr(arm, k)}}))
                 os.replace(tmp, ck)
 
         final = self._final(S, counter, gen)

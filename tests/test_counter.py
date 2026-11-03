@@ -57,11 +57,22 @@ def test_repeated_adf_calls_are_each_charged():
     arm = make_a2(parity_set(2), TreeArmConfig(), adf_arities=(2, 3))
     # RPB = and(ADF0(x0, x1), ADF0(x0, x1)); ADF0 = or(ARG0, ARG1); ADF1 = ARG2
     p = _prog(arm, [["and", "ADF0", "x0", "x1", "ADF0", "x0", "x1"], ["or", "ARG0", "ARG1"], ["ARG2"]])
-    # and(1) + 2 * [call(1) + args(2) + body(3)] = 13
-    assert p.cost_per_case() == 13
+    # and(1) + 2 * [call(0) + args(2) + body: or(1) + ARG reads(0)] = 7: each call is
+    # executed in full, and with each argument read once it costs exactly the inlined tree
+    assert p.cost_per_case() == 7
     assert p.stored_size() == 7 + 3 + 1
     assert p.expanded_size() == 7  # and(or(x0, x1), or(x0, x1))
-    assert reference_eval(p, np.array([[True, False]]))[1] == 13
+    assert reference_eval(p, np.array([[True, False]]))[1] == 7
+
+
+def test_by_value_argument_read_twice_is_computed_once():
+    arm = make_a2(parity_set(2), TreeArmConfig(), adf_arities=(2, 3))
+    # RPB = ADF0(and(x0, x1), x0); ADF0 = or(ARG0, ARG0)
+    p = _prog(arm, [["ADF0", "and", "x0", "x1", "x0"], ["or", "ARG0", "ARG0"], ["ARG2"]])
+    # args: and(x0, x1) = 3 and x0 = 1, each executed once; body: or = 1 -> 5
+    assert p.cost_per_case() == 5
+    assert p.expanded_size() == 7  # or(and(x0, x1), and(x0, x1))
+    assert reference_eval(p, np.array([[True, False]]))[1] == 5
 
 
 def test_hierarchical_adf_cost_and_depth():
@@ -70,9 +81,9 @@ def test_hierarchical_adf_cost_and_depth():
     # RPB = ADF1(x0, x1, x0)
     p = _prog(arm, [["ADF1", "x0", "x1", "x0"], ["or", "ARG0", "ARG1"],
                     ["ADF0", "ARG0", "nand", "ARG1", "ARG2"]])
-    adf0 = 3
-    adf1 = 5 + adf0  # 5 stored nodes + one call's body
-    assert p.cost_per_case() == 4 + adf1
+    # RPB: call(0) + x0, x1, x0 (3); ADF1: call(0) + ARG0(0) + nand(1) + ARG1, ARG2 (0);
+    # ADF0: or(1) + ARGs(0) -> 5, the inlined size
+    assert p.cost_per_case() == 5
     # inlined: or(x0, nand(x1, x0)) -> depth 2, size 5
     assert p.depth() == 2
     assert p.expanded_size() == 5

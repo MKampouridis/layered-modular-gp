@@ -19,8 +19,12 @@ to it) and deletion (remove a module, re-pointing its readers to another
 module of the same level). After every operator, modules the output can no
 longer reach are removed (each level keeps at least one module).
 
-A5-copy is A5 with caching off (`cached=False`): same representation and
-operators, every read of a module re-executes and is charged in full.
+A5-copy gives every module read a private copy (`private_copies`): after
+every operator, a module read by several REFs is duplicated so that each REF
+owns its module, so neither computation nor genes are shared, and the cost
+equals the inlined tree's. Operators are A5's. (Before 3 Nov 2026 A5-copy
+only switched the cache off and kept shared genes; changed after the WP2
+independent review.)
 A5-frozen draws levels 1..L-1 at random once per run, shares them across the
 population and never varies them; only level L and the output tree evolve.
 """
@@ -40,6 +44,7 @@ class HierArmConfig:
     connectivity: str = "strict"  # strict (A5) | dense (A6) | inputs (A6-inputs)
     cached: bool = True  # False: A5-copy
     frozen_below: bool = False  # True: A5-frozen
+    private_copies: bool = False  # True: A5-copy (every module read gets its own module)
     min_modules: int = 1
     max_modules: int = 8  # per level
     init_modules: tuple[int, int] = (2, 4)
@@ -92,6 +97,8 @@ class HierArm:
     def __init__(self, pset: PrimitiveSet, cfg: HierArmConfig, name: str = "a5"):
         if cfg.connectivity not in ("strict", "dense", "inputs"):
             raise ValueError(cfg.connectivity)
+        if cfg.min_modules < 1:
+            raise ValueError("every level needs at least one module (min_modules >= 1)")
         self.pset = pset
         self.cfg = cfg
         self.name = name
@@ -250,6 +257,8 @@ class HierArm:
         reach (keeping at least one per level, and all frozen modules), and
         re-index every REF."""
         L = self.cfg.levels
+        if self.cfg.private_copies:
+            levels, codes, args = self._unshare(levels, codes, args)
         n = len(levels)
         order = sorted(range(n), key=lambda k: levels[k])
         pos = {k: i for i, k in enumerate(order)}
@@ -269,10 +278,9 @@ class HierArm:
         keep = [act[k] or k < n_frozen for k in range(n)]
         for lvl in range(1, L + 1):
             ks = [k for k in range(n) if lv[k] == lvl]
-            kept = [k for k in ks if keep[k]]
-            for k in ks[: max(0, self.cfg.min_modules - len(kept))]:
-                if not keep[k]:
-                    keep[k] = True
+            need = self.cfg.min_modules - sum(keep[k] for k in ks)
+            for k in [k for k in ks if not keep[k]][: max(0, need)]:
+                keep[k] = True
         new = {}
         for k in range(n):
             if keep[k]:
@@ -297,6 +305,34 @@ class HierArm:
             out_cd.append(cd[k])
             out_ag.append(a2)
         return self._pack(out_lv, out_cd, out_ag)
+
+    @staticmethod
+    def _unshare(levels, codes, args):
+        """A5-copy: give every module read its own module, so nothing is
+        shared, neither computation nor genes. Walking down from the output,
+        a REF to a module that another REF already owns is re-pointed to a
+        fresh copy of that module (whose own reads are then processed in the
+        same way). The result computes the same function."""
+        levels = list(levels)
+        mods_c = [list(c) for c in codes[:-1]]
+        mods_a = [list(a) for a in args[:-1]]
+        out_c, out_a = list(codes[-1]), list(args[-1])
+        owned = set()
+        work = [("out", None)]
+        while work:
+            _, b = work.pop()
+            bc, ba = (out_c, out_a) if b is None else (mods_c[b], mods_a[b])
+            for j, (c, a) in enumerate(zip(bc, ba)):
+                if c == REF and a >= 0:
+                    if a in owned:
+                        levels.append(levels[a])
+                        mods_c.append(list(mods_c[a]))
+                        mods_a.append(list(mods_a[a]))
+                        a = len(levels) - 1
+                        ba[j] = a
+                    owned.add(a)
+                    work.append(("mod", a))
+        return levels, mods_c + [out_c], mods_a + [out_a]
 
     # ---- operators ----------------------------------------------------------------------
     def _evolvable(self, levels):
@@ -467,7 +503,9 @@ VARIANTS = {
     "a5": {},
     "a6": {"connectivity": "dense"},
     "a6_inputs": {"connectivity": "inputs"},
-    "a5_copy": {"cached": False},
+    # Private copies: the per-level module limit is lifted (the expanded-size cap,
+    # identical for every arm, is what bounds the program).
+    "a5_copy": {"cached": False, "private_copies": True, "max_modules": 64},
     "a5_frozen": {"frozen_below": True},
 }
 

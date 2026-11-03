@@ -6,20 +6,23 @@ the special case K = 0. Each branch is a prefix-ordered tuple of integer
 symbol codes plus a parallel tuple of constant values (used only by ERC
 nodes).
 
-Compute accounting (see `lmgp.core.counter`): one unit per node executed per
-training case. The cost per case of a program is the number of node
-executions in one evaluation:
+Compute accounting (see `lmgp.core.counter`): one unit per node of the
+equivalent inlined tree that is executed, per training case. Concretely:
 
-* a primitive, variable, constant or ADF-argument node costs 1;
-* an ADF call node costs 1, plus its argument subtrees, plus the full cost of
-  the ADF body, charged afresh on every call (even with identical arguments).
+* a primitive, variable or constant node costs 1;
+* an ADF call node and an ADF-argument (ARG) node cost 0: they only pass a
+  value on, and both vanish when the call is inlined;
+* each call executes its argument subtrees and the ADF body afresh, even with
+  identical arguments.
 
 ADF arguments are passed by value: each argument subtree is executed once per
-call and every reference to it inside the body costs 1. This is genuine
-reuse of a computed value, the benefit modularity is meant to provide, and it
-is the same principle as charging a cached module output once per program
-evaluation (A5). It means an ADF program can cost less than the equivalent
-inlined tree.
+call, however often the body reads it. This is genuine reuse of a computed
+value, the benefit modularity is meant to provide, and the same principle as
+charging a cached module output once per program evaluation (A3-A6). An ADF
+program whose arguments are each read once costs exactly as much as its
+inlined tree; reading an argument several times makes it cheaper.
+(Changed 3 Nov 2026 from "call and ARG nodes cost 1" after the WP2
+independent review: see docs/progress.md.)
 
 Size is measured separately from cost. `expanded_size` is the size of the
 equivalent plain tree with every ADF call inlined (the call node disappears,
@@ -152,15 +155,19 @@ class TreeProgram:
         for k in range(K):
             c = 0
             for code in self.codes[k + 1]:
-                c += 1
-                if kind[code] == Kind.CALL:
+                kd = kind[code]
+                if kd == Kind.CALL:
                     c += adf_cost[syms[code].ref]
+                elif kd != Kind.ARG:
+                    c += 1
             adf_cost[k] = c
         rpb = 0
         for code in self.codes[0]:
-            rpb += 1
-            if kind[code] == Kind.CALL:
+            kd = kind[code]
+            if kd == Kind.CALL:
                 rpb += adf_cost[syms[code].ref]
+            elif kd != Kind.ARG:
+                rpb += 1
         return (rpb, *adf_cost)
 
     def cost_per_case(self) -> int:

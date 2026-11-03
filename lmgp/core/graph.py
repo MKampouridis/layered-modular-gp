@@ -17,15 +17,24 @@ Every module carries a ``level``. The arm decides which REFs a level may hold;
 this class only requires that targets are inputs or earlier modules.
 
 Compute accounting (the same counter as every other arm, see
-`lmgp.core.counter`): one unit per node executed per training case.
+`lmgp.core.counter`): one unit per node of the equivalent inlined tree that
+is executed, per training case.
 
-* A REF leaf is a node and costs 1, like a variable leaf in a tree.
+* Function, ERC and input-REF nodes cost 1 (an input REF is a variable leaf).
+* A module REF costs 0: it only passes on a value already computed, and it
+  vanishes when the module is inlined (as an ADF call node does in A2).
 * ``cached=True`` (A3-A6): every *active* module (reachable from the output)
   is executed once per program evaluation and its output cached, so a module
   output is charged once however often it is read. Inactive modules are not
   executed and cost nothing.
-* ``cached=False`` (A5-copy): every REF to a module re-executes that module
-  (recursively); the program is charged as if each read had a private copy.
+* ``cached=False``: every module REF re-executes that module (recursively),
+  so the cost equals the expanded size, as for the equivalent tree.
+
+A program in which every module is read once therefore costs exactly what
+tree GP pays for the same function; sharing makes it cheaper. (Changed on 3
+Nov 2026 from "every REF costs 1" after the WP2 independent review, which
+showed that rule charged the graph arms 20-50% more than A1 for the same
+function; see docs/progress.md.)
 
 Size: ``expanded_size`` and ``depth`` are those of the fully inlined tree, in
 which every module REF is replaced by a copy of the module's inlined body
@@ -108,13 +117,18 @@ class GraphProgram:
         return list(self.levels) == sorted(self.levels)
 
     # ---- accounting -----------------------------------------------------------
+    def own_cost(self, b: int) -> int:
+        """Cost of executing body b once, given its module inputs: every node
+        except module REFs."""
+        return len(self.codes[b]) - len(self.refs(b))
+
     @cached_property
     def _module_costs(self) -> tuple[int, ...]:
-        """Per-body cost of one execution, without caching (A5-copy): own
-        nodes plus a fresh execution of every referenced module."""
+        """Per-body cost of one execution without caching: own nodes plus a
+        fresh execution of every referenced module."""
         cost = []
         for b in range(self.out + 1):
-            c = len(self.codes[b])
+            c = self.own_cost(b)
             for t in self.refs(b):
                 c += cost[t]
             cost.append(c)
@@ -124,7 +138,7 @@ class GraphProgram:
         if not self.cached:
             return self._module_costs[self.out]
         act = self.active
-        return len(self.codes[self.out]) + sum(len(self.codes[k]) for k in range(self.n_modules) if act[k])
+        return self.own_cost(self.out) + sum(self.own_cost(k) for k in range(self.n_modules) if act[k])
 
     @cached_property
     def _inlined(self) -> tuple[tuple[int, int], ...]:
@@ -157,7 +171,8 @@ class GraphProgram:
         return self._inlined[self.out][1]
 
     def stored_size(self) -> int:
-        """Nodes actually stored in active modules plus the output tree."""
+        """Nodes stored in the active modules plus the output tree (module
+        REF leaves included)."""
         act = self.active
         return len(self.codes[self.out]) + sum(len(self.codes[k]) for k in range(self.n_modules) if act[k])
 
@@ -251,29 +266,37 @@ class ReadoutGraph(GraphProgram):
     of *all* its modules (A4, as published: a ridge model over every tree).
 
     The output body is a fixed placeholder (one ERC) and is never executed.
-    Every module is active and executed once per evaluation (cached), so the
-    cost per case is the sum of the module body sizes. The readout weights
-    are fitted outside the program, like linear scaling, and are not
-    charged. Expanded size is the sum of the modules' inlined sizes (the size
-    of the model sum_i w_i * tree_i, not counting the weights); depth is the
-    largest inlined depth.
+    Every module is active and executed once per evaluation (cached).
+
+    The readout a + sum_i w_i T_i is fitted outside the program, as linear
+    scaling a + b f is for every other arm, and the fit is not charged. Its
+    k weights, however, do more than linear scaling's single weight, so the
+    extra terms are charged and counted as nodes: 2(k - 1) per case (k - 1
+    further multiplications and additions beyond a + b f), both in the cost
+    and in the expanded size. With one tree A4 costs exactly what a
+    linearly scaled tree costs. (Added on 3 Nov 2026 after the WP2
+    independent review.)
     """
 
     @cached_property
     def active(self) -> tuple[bool, ...]:
         return (True,) * self.n_modules
 
+    @property
+    def readout_nodes(self) -> int:
+        return 2 * (self.n_modules - 1)
+
     def cost_per_case(self) -> int:
-        return sum(len(self.codes[k]) for k in range(self.n_modules))
+        return sum(self.own_cost(k) for k in range(self.n_modules)) + self.readout_nodes
 
     def expanded_size(self) -> int:
-        return sum(self._inlined[k][0] for k in range(self.n_modules))
+        return sum(self._inlined[k][0] for k in range(self.n_modules)) + self.readout_nodes
 
     def depth(self) -> int:
         return max(self._inlined[k][1] for k in range(self.n_modules))
 
     def stored_size(self) -> int:
-        return self.cost_per_case()
+        return sum(len(self.codes[k]) for k in range(self.n_modules)) + self.readout_nodes
 
     def evaluate(self, X: np.ndarray) -> np.ndarray:
         """Matrix of module outputs, shape (n, n_modules)."""

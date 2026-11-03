@@ -22,6 +22,17 @@ Agreed accounting rules (Michael, 2 November 2026):
   offspring and the rest of its generation are discarded, so every arm uses
   at most exactly the budget.
 
+What counts as a node (3 November 2026, after the WP2 independent review):
+one unit per node of the program's equivalent inlined tree that is actually
+executed. Function, variable and constant nodes cost 1. Nodes that only pass
+on a value already computed (an ADF call node, an ADF argument read, a read
+of a cached module output) cost 0, because they vanish when the program is
+inlined. So a program with no reuse costs exactly what the equivalent tree
+costs in A1, and every saving comes from genuinely shared computation
+(arguments passed by value, cached module outputs). Before this date, call,
+argument and module-read nodes cost 1 each, which charged the modular arms
+20-50% more than A1 for the same function.
+
 Wall-clock time and the number of program evaluations are logged alongside.
 """
 from __future__ import annotations

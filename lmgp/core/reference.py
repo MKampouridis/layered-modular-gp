@@ -24,8 +24,9 @@ def reference_eval(prog: TreeProgram, X: np.ndarray):
         def node():
             i = pos[0]
             pos[0] += 1
-            counter[0] += 1
             s = arch.symbols[codes[i]]
+            if s.kind not in (Kind.CALL, Kind.ARG):  # call and argument nodes only pass values on
+                counter[0] += 1
             if s.kind == Kind.VAR:
                 return row[s.ref]
             if s.kind == Kind.ARG:
@@ -59,8 +60,9 @@ def reference_eval_graph(prog, X: np.ndarray):
         def node():
             i = pos[0]
             pos[0] += 1
-            counter[0] += 1
             c = codes[i]
+            if not (c == REF and args[i] >= 0):  # a module read only passes a value on
+                counter[0] += 1
             if c == REF:
                 a = args[i]
                 if a < 0:
