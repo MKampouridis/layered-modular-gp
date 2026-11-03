@@ -1,5 +1,33 @@
 # Progress
 
+## 3 November 2026 (MacBook Pro) — slow A2 run diagnosed: a hole in the size cap
+
+### What changed
+- **Size cap now also bounds functional size [flag: fairness-relevant, decided].** Every arm's offspring must satisfy expanded size ≤ 500, depth ≤ 17 **and functional size ≤ 500**. Functional size is the number of stored nodes, not counting the nodes that only pass a value on (ADF CALL and ARG nodes, and module REFs). Commit `c4bee68`.
+  - *Why.* The expanded size inlines the program, so it leaves out (a) an ADF argument the body never reads and (b) an ADF that is never called. Under by-value semantics, (a) is still executed and charged. The cap therefore never saw this code, and A2 used it as an unbounded bloat reservoir. On even-6, one program had expanded size 443 and stored 4,397 nodes, and cost 5,077 units per case (`ADF1 := and(ARG1, ARG1)` with huge subtrees in its unused third argument). Population stored size reached 23k nodes, and time per generation kept rising. **This is why the A2 even-6 1e10 pilot run never finished.**
+  - *Why it is neutral.* For A1, functional size equals expanded size. For A3–A6 it never exceeds expanded size, because every active module is read at least once (tested). For A2 without hidden code it is also at most the expanded size (tested). So the check only binds on hidden code. A raw stored-size cap was rejected, because it would charge the pass-through nodes that the counter treats as free and would slightly penalise legitimate modular programs. Koza also bounded ADF programs by their stored size.
+  - The counter is unchanged. A1 is unchanged (same results, same random streams). A2's G1 numbers are re-run below.
+- **Faster inlined size and depth** (commit `ad80cc9`): an exact integer fast path for the result-producing branch. These pure-Python passes had been about 40% of A2's run time, more than evaluation itself. The results matched the previous code on 13,500 bred programs, and a seeded run reproduces its trajectory exactly.
+
+### After the fix (A2, even-6, seed 0, laptop)
+- 1e10 run: functional size is capped. Stored size, counting pass-through nodes, levels off at about 1,100. Time per generation is flat.
+- A2's evolved programs are cheap (about 34 units per case), so 1e10 means about 4.6M evaluations. Python's per-evaluation overhead, not the counter, sets wall time. *(Full-run time: see below.)*
+
+### G1 Boolean, A2 re-run (new counter, new cap; code `ad80cc9`)
+Same settings as on 2 November: 30 runs per cell, pop 500, at most 100 generations, lexicase. A1's rows are unchanged; the old A2 runs are in `results/g1_old_counter/`.
+
+| Task | Arm | Solved | Effort (units) [95% CI] | Effort (individuals) | Median solution size |
+| --- | --- | --- | --- | --- | --- |
+| 6-mux | A1 | 30/30 | 2.15e7 [1.08e7, 2.39e7] | 5.5e3 | 41 |
+| 6-mux | A2 | 30/30 | 3.22e7 [2.61e7, 3.22e7] | 8.5e3 | 89 |
+| even-4 | A1 | 30/30 | 4.03e7 [2.35e7, 4.03e7] | 1.65e4 | 214 |
+| even-4 | A2 | 29/30 | 4.95e7 [2.42e7, 6.81e7] | 3.5e4 | 257 |
+| even-5 | A1 | 15/30 | 2.90e9 [1.88e9, 4.89e9] | 3.46e5 | 417 |
+| even-5 | A2 | 27/30 | **2.49e8** [1.25e8, 4.01e8] | 1.0e5 | 387 |
+
+- **ADFs reduce effort on even-5 parity by 11.6× in units** (6.8× under the old counter) and 3.5× in individuals, with CIs far apart. ✔ The G1 known-result criterion still holds.
+- On 6-mux and even-4, A2 now costs 1.2–1.5× A1 in units (2.1–2.3× under the old counter). The old counter's charge for pass-through nodes explains most of the gap that has closed. These tasks are too easy for ADFs to pay off.
+
 ## 3 November 2026 — G1 self-certified (gate waived); WP2 built; hand-over to the MacBook Pro
 
 **Hand-over state (read this first on the Pro).** All local runs on the Air were stopped at 07:40. Nothing is running. Code and docs are in git; `results/`, `data/` and Claude's project memory travel through Box with `scripts/handover.py` (see CLAUDE.md).
@@ -23,7 +51,7 @@ Wall seconds per run (one seed; Boolean runs do not stop at a solution):
 | 11-mux | 0.7 / 5.1 / 34.5 | 1.7 / 6.1 / 44.2 |
 | SRBench 227_cpu_small | 8.3 / 46.4 / 179 | 6.6 / 24.2 / 140 |
 
-**Open problem: A2 on even-6 at 1e10.** The run had not finished after 7.3 hours; about 6 minutes was expected. A trace under the new counter (`scripts/trace_run.py`) shows:
+**Open problem: A2 on even-6 at 1e10** *(solved later the same day: see the MacBook Pro entry above).* The run had not finished after 7.3 hours; about 6 minutes was expected. A trace under the new counter (`scripts/trace_run.py`) shows:
 - A2 runs at about 900 evaluations/s and 2.3e6 units/s, and gets slower as it goes.
 - The population solves the task by generation 130 and keeps running to the budget, with mean expanded size about 325.
 - That projects to more than 1.2 h per run. A1 runs at 2.1e7 units/s.
