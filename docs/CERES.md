@@ -2,6 +2,8 @@
 
 CERES is the University of Essex cluster: CentOS 7 (glibc 2.17), with jobs managed by Sun Grid Engine (`qsub`). Array elements are numbered by `SGE_TASK_ID`, starting from 1. Log in with `ssh <user>@ceres.essex.ac.uk`, from campus or over the VPN, with MFA. Every node shares the home folder.
 
+**From rag-server** (off campus): CERES's name only resolves inside the university, so `~/.ssh/config` on rag-server sends `ssh ceres` through the gateway `sshgw.essex.ac.uk`, and keeps one shared connection open for 8 hours. Michael logs in once with `ssh ceres` (password and MFA). After that, `ssh ceres` and `rsync` work without prompts until the connection expires. `ssh -O check ceres` shows whether it is still open.
+
 This setup follows the two sibling projects that already run on CERES. llm-primitives-stgp's `docs/CERES.md` records the cluster's rules, which regime-fusion-gp checked on 29 October 2026:
 
 - **Queue:** `all.q`, one slot per core. There is no run-time or memory limit. Jobs may be suspended while a higher-priority queue is busy, and they resume by themselves.
