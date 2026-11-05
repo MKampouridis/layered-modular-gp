@@ -54,7 +54,7 @@ When `qstat -u $USER` shows nothing left:
 python scripts/ceres/pilot_timing.py --estimate-only --max-measured 1e11 --out results/pilot_ceres
 ```
 
-Back on the Mac:
+Back on rag-server (in `~/code/layered-modular-gp`):
 
 ```bash
 rsync -av <user>@ceres.essex.ac.uk:layered-modular-gp/results/pilot_ceres results/
@@ -87,4 +87,4 @@ rsync -av <user>@ceres.essex.ac.uk:layered-modular-gp/results/<batch> results/
 
 - **State `Eqw`:** the element failed to start. `qstat -j <job>` says why, and `qmod -c <job>` clears it once fixed.
 - **Stopping:** `qdel <job>` stops a whole array; `qdel <job> -t 5-9` stops some of its elements.
-- **Portability check:** before the first full campaign, re-run two or three tasks of the CERES batch on the Mac and compare their `final.parquet` files. Units, evaluations and generations must match exactly.
+- **Portability check:** before the first full campaign, re-run two or three tasks of the CERES batch on rag-server and compare their `final.parquet` files. Units, evaluations and generations must match exactly.

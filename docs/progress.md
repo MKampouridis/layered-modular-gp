@@ -1,5 +1,9 @@
 # Progress
 
+## 5 November 2026 — project moved to rag-server
+
+The working copy now lives on `rag-server` at `~/code/layered-modular-gp`, not on the Macs. It was cloned at `091094b`. The `.venv` is Python 3.12.14 (the Mac had 3.12.16), with the same package versions (numpy 2.5.4, pandas 3.1.0, scipy 1.18.1, pyarrow 26.0.0). All 246 tests pass there. `results/` and `data/` were copied with rsync, 2,320 files with matching counts, and so was Claude's project memory. CERES results should now be rsynced straight to the server. The Box hand-over (`scripts/handover.py`) is retired.
+
 ## 3 November 2026 (MacBook Pro, later) — pre-CERES code review: findings fixed
 
 **Why.** The WP2 independent review had missed the size-cap hole found earlier today (below), so before any CERES campaign the code was reviewed again. Three reviews ran:

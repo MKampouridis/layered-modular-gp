@@ -103,6 +103,6 @@ docs/          research-plan.md, lit-check.md, progress.md
 - Checkpoint long runs so they can resume.
 - Record Python and package versions with every batch of results.
 
-## Two Macs, one active at a time
+## Working machine: rag-server
 
-Michael works on a MacBook Air and a MacBook Pro. Git carries code and docs; `scripts/handover.py` carries `results/`, `data/` and Claude's project memory through Box (`handover_dir` in `config/paths.toml`, copied from `config/paths.example.toml`). Start a session with `.venv/bin/python scripts/handover.py pull` and end it with `... push`, after committing and pushing. Check `... status` first if unsure which Mac holds the project. Stop local runs before pushing.
+Since 5 November 2026 the project lives on Michael's Linux server `rag-server` (Ubuntu, 4 cores, 15 GB RAM, shared with other services) at `~/code/layered-modular-gp`, with a Python 3.12 `.venv` pinned to the package versions used on the Macs. The Macs are no longer working copies. Results come straight from CERES to the server with `rsync`. Local runs on the server stay short (tests, checks); real batches go to CERES. `scripts/handover.py` is no longer used.
