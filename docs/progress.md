@@ -1,5 +1,23 @@
 # Progress
 
+## 10 November 2026 — CERES pilot results; rag-server reaches CERES
+
+**CERES access from rag-server.** The SSH gateway `sshgw` refuses connections from rag-server, so the server uses the GlobalProtect VPN through `openconnect`. Login is Microsoft single sign-on: the gateway's login cookie is obtained in a browser on the Mac, then passed to openconnect (steps in `docs/CERES.md`). Only university addresses go through the tunnel. `ssh ceres` then works directly, and one password login is shared for 8 hours (CERES accepts no SSH keys).
+
+**Pilot (CERES, commit `091094b`, Xeon Gold 6152).** All 40 elements finished, with empty error logs. The even-6 and SRBench G1 batches have not been submitted yet. Results are in `results/pilot_ceres/` (`pilot_estimate.txt`). Mean hours per run (* = extrapolated):
+
+| task | 1e8 | 1e9 | 1e10 | 1e11 | 1e12* |
+| --- | --- | --- | --- | --- | --- |
+| comp L2 R2 | 0.002 | 0.020 | 0.22 | 1.29 | 12.9 |
+| comp L4 R4 | 0.002 | 0.015 | 0.15 | 1.41 | 14.1 |
+| 11-mux | 0.001 | 0.005 | 0.06 | 0.39 | 3.9 |
+| even-6 | 0.005 | 0.054 | 0.94 | 5.12 | 51.2 |
+| SRBench 227 cpu_small | 0.006 | 0.022 | 0.14 | 0.80 | 8.0 |
+
+- **Full Stage 1+2 at five budgets (1e8–1e12): 331,301 CPU-h.** Without 1e12: **34,738 CPU-h.** With about 250 slots that is roughly 6 days of cluster time, against about 55 days with 1e12.
+- **Median speed:** A1 20.6M units/s, A2 16.4M units/s. On CERES A2 is only 1.26× slower per unit, not the 10× seen on the laptop, so **no Numba** for now.
+- **Decision on 1e12:** it costs 90% of the total. It is kept only as a targeted extension for the cells where the scaling curves have not flattened by 1e11; this is to be confirmed with Michael before Stage 1 scaling (a later gate). Screening keeps 1e11.
+
 ## 5 November 2026 — project moved to rag-server
 
 The working copy now lives on `rag-server` at `~/code/layered-modular-gp`, not on the Macs. It was cloned at `091094b`. The `.venv` is Python 3.12.14 (the Mac had 3.12.16), with the same package versions (numpy 2.5.4, pandas 3.1.0, scipy 1.18.1, pyarrow 26.0.0). All 246 tests pass there. `results/` and `data/` were copied with rsync, 2,320 files with matching counts, and so was Claude's project memory. CERES results should now be rsynced straight to the server. The Box hand-over (`scripts/handover.py`) is retired.
