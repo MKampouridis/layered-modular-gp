@@ -6,8 +6,8 @@ CERES is the University of Essex cluster: CentOS 7 (glibc 2.17), with jobs manag
 
 1. On rag-server: `sudo openconnect --protocol=gp --usergroup=gateway gateway1.essex.ac.uk`. It prints a `https://login.microsoftonline.com/...` link. Copy it, then press Ctrl+C.
 2. On the Mac, in Chrome with the developer tools open (Network tab, **Preserve log** ticked), open the link and log in with MFA. Copy `prelogin-cookie` from the **ACS** entry's response headers.
-3. On rag-server, at once, ideally inside `tmux` so the VPN survives the SSH window closing:
-   `echo 'COOKIE' | sudo openconnect --protocol=gp --user=mkampo@essex.ac.uk --usergroup=gateway:prelogin-cookie --passwd-on-stdin gateway1.essex.ac.uk`
+3. On rag-server, at once (`-b` runs it in the background, so it survives the SSH window closing; stop it with `sudo pkill openconnect`):
+   `echo 'COOKIE' | sudo openconnect -b --protocol=gp --user=mkampo@essex.ac.uk --usergroup=gateway:prelogin-cookie --passwd-on-stdin gateway1.essex.ac.uk`
    Leave it running. It is up when it prints `ESP session established`.
 4. In another window: `ssh ceres` and enter the CERES password. CERES accepts no SSH keys. `~/.ssh/config` keeps that login open for 8 hours, so Claude's `ssh` and `rsync` reuse it without a prompt. `ssh -O check ceres` shows whether it is still open.
 
