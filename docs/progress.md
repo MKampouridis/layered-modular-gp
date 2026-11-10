@@ -1,5 +1,26 @@
 # Progress
 
+## 10 November 2026 (later) — even-6 G1 batch done; portability check passes
+
+**Even-6 parity (CERES, commit `af8ec83`, 60 runs, job 2869803).** Same settings as the other Boolean G1 cells: 30 runs per arm, pop 500, at most 100 generations, lexicase. All 60 finished with clean logs, in about 10 minutes. Results are in `results/g1_parity6/`.
+
+| Task | Arm | Solved | Effort (units) [95% CI] | Effort (individuals) | Median solution size |
+| --- | --- | --- | --- | --- | --- |
+| even-6 | A1 | 0/30 | not defined (no run solved it) | – | – |
+| even-6 | A2 | 23/30 | 3.90e8 [2.44e8, 6.27e8] | 1.28e5 | 305 |
+
+- **The ADF advantage grows with parity order**, as in Koza (1994): the same effort on even-4, 23× less on even-5, and on even-6 A1 solves nothing in 100 generations while A2 solves 23 of 30. ✔
+- A1's unsolved runs used a median of 6.2e8 units each, so A1's effort is above the 1.9e10 units the 30 runs spent in total.
+
+**Portability check: passes.** Three even-6 runs (A1 seed 0, A2 seeds 0 and 1) were re-run on rag-server and compared with CERES. Units, evaluations, generations, solution generation and the final model are identical. CERES is 1.1–1.6× faster per run.
+
+**SRBench G1 check (job 2869804, 50 runs).** 30 of 50 done at 16:40, with clean logs. The 20 still running are mostly `227_cpu_small` (10), the largest dataset; from the pilot speed they should finish around midnight. The table will be added here when they do.
+
+**Next**
+1. When SRBench finishes: collect, rsync, add the table. That closes the G1 re-run.
+2. Michael: submit the tuning campaign (`configs/wp2/tuning.yaml`, 3,600 runs). It does not depend on the SRBench check. CERES is already on the right commit (`af8ec83`); do not `git pull` there while SRBench is running.
+3. Then `make_tuning.py report`, `make_screening.py write`, the screening and the G2 test. Ask Michael at the G2 gate.
+
 ## 10 November 2026 — CERES pilot results; rag-server reaches CERES
 
 **CERES access from rag-server.** The SSH gateway `sshgw` refuses connections from rag-server, so the server uses the GlobalProtect VPN through `openconnect`. Login is Microsoft single sign-on: the gateway's login cookie is obtained in a browser on the Mac, then passed to openconnect (steps in `docs/CERES.md`). Only university addresses go through the tunnel. `ssh ceres` then works directly, and one password login is shared for 8 hours (CERES accepts no SSH keys).
