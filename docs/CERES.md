@@ -2,7 +2,16 @@
 
 CERES is the University of Essex cluster: CentOS 7 (glibc 2.17), with jobs managed by Sun Grid Engine (`qsub`). Array elements are numbered by `SGE_TASK_ID`, starting from 1. Log in with `ssh <user>@ceres.essex.ac.uk`, from campus or over the VPN, with MFA. Every node shares the home folder.
 
-**From rag-server** (off campus): CERES's name only resolves inside the university, so `~/.ssh/config` on rag-server sends `ssh ceres` through the gateway `sshgw.essex.ac.uk`, and keeps one shared connection open for 8 hours. Michael logs in once with `ssh ceres` (password and MFA). After that, `ssh ceres` and `rsync` work without prompts until the connection expires. `ssh -O check ceres` shows whether it is still open.
+**From rag-server** (off campus). CERES's name only resolves inside the university, and the SSH gateway `sshgw` refuses connections from rag-server, so the server uses the GlobalProtect VPN through `openconnect`. Only university addresses go through the tunnel, so the server's other services are not affected. Login is Microsoft single sign-on, so the cookie comes from a browser on the Mac:
+
+1. On rag-server: `sudo openconnect --protocol=gp --usergroup=gateway gateway1.essex.ac.uk`. It prints a `https://login.microsoftonline.com/...` link. Copy it, then press Ctrl+C.
+2. On the Mac, in Chrome with the developer tools open (Network tab, **Preserve log** ticked), open the link and log in with MFA. Copy `prelogin-cookie` from the **ACS** entry's response headers.
+3. On rag-server, at once, ideally inside `tmux` so the VPN survives the SSH window closing:
+   `echo 'COOKIE' | sudo openconnect --protocol=gp --user=mkampo@essex.ac.uk --usergroup=gateway:prelogin-cookie --passwd-on-stdin gateway1.essex.ac.uk`
+   Leave it running. It is up when it prints `ESP session established`.
+4. In another window: `ssh ceres` and enter the CERES password. CERES accepts no SSH keys. `~/.ssh/config` keeps that login open for 8 hours, so Claude's `ssh` and `rsync` reuse it without a prompt. `ssh -O check ceres` shows whether it is still open.
+
+Type the username by hand: copying it from some apps turns the quotes into curly ones, which breaks the login (HTTP 512). The portal `byodportal.essex.ac.uk` only forwards to `gateway1`, so going to the gateway directly saves one login.
 
 This setup follows the two sibling projects that already run on CERES. llm-primitives-stgp's `docs/CERES.md` records the cluster's rules, which regime-fusion-gp checked on 29 October 2026:
 
