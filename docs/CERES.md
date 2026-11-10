@@ -2,16 +2,12 @@
 
 CERES is the University of Essex cluster: CentOS 7 (glibc 2.17), with jobs managed by Sun Grid Engine (`qsub`). Array elements are numbered by `SGE_TASK_ID`, starting from 1. Log in with `ssh <user>@ceres.essex.ac.uk`, from campus or over the VPN, with MFA. Every node shares the home folder.
 
-**From rag-server** (off campus). CERES's name only resolves inside the university, and the SSH gateway `sshgw` refuses connections from rag-server, so the server uses the GlobalProtect VPN through `openconnect`. Only university addresses go through the tunnel, so the server's other services are not affected. Login is Microsoft single sign-on, so the cookie comes from a browser on the Mac:
+**From rag-server** (off campus). The SSH gateway `sshgw` refuses this server, so it reaches CERES over the GlobalProtect VPN through `openconnect`. Only university addresses go through the tunnel. The steps are shared by every project on the server, so they live outside this repo: `~/.claude/CLAUDE.md` describes them, and `~/.local/bin/ceres-vpn` does them.
 
-1. On rag-server: `sudo openconnect --protocol=gp --usergroup=gateway gateway1.essex.ac.uk`. It prints a `https://login.microsoftonline.com/...` link. Copy it, then press Ctrl+C.
-2. On the Mac, in Chrome with the developer tools open (Network tab, **Preserve log** ticked), open the link and log in with MFA. Copy `prelogin-cookie` from the **ACS** entry's response headers.
-3. On rag-server, at once (`-b` runs it in the background, so it survives the SSH window closing; stop it with `sudo pkill openconnect`):
-   `echo 'COOKIE' | sudo openconnect -b --protocol=gp --user=mkampo@essex.ac.uk --usergroup=gateway:prelogin-cookie --passwd-on-stdin gateway1.essex.ac.uk`
-   Leave it running. It is up when it prints `ESP session established`.
-4. In another window: `ssh ceres` and enter the CERES password. CERES accepts no SSH keys. `~/.ssh/config` keeps that login open for 8 hours, so Claude's `ssh` and `rsync` reuse it without a prompt. `ssh -O check ceres` shows whether it is still open.
+1. `ceres-vpn`: it prints a Microsoft login link. Open it in Chrome on the Mac, with the developer tools on Network and **Preserve log** ticked, and log in. Paste back `prelogin-cookie` from the **ACS** entry's response headers. The VPN then runs in the background.
+2. `ssh ceres` (CERES password; CERES accepts no SSH keys). The login is shared for 8 hours, so Claude's `ssh` and `rsync` reuse it.
 
-Type the username by hand: copying it from some apps turns the quotes into curly ones, which breaks the login (HTTP 512). The portal `byodportal.essex.ac.uk` only forwards to `gateway1`, so going to the gateway directly saves one login.
+`ceres-vpn status` shows the state, and `ceres-vpn down` disconnects. `ssh ceres` uses CERES's IP address (155.245.94.182), because the VPN does not reliably provide Essex DNS.
 
 This setup follows the two sibling projects that already run on CERES. llm-primitives-stgp's `docs/CERES.md` records the cluster's rules, which regime-fusion-gp checked on 29 October 2026:
 
