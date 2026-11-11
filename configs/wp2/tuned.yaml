@@ -1,0 +1,81 @@
+# Chosen configuration per arm (scripts/make_tuning.py report).
+a1:
+  arm_params:
+    init_depth:
+    - 2
+    - 5
+    mutation_depth: 2
+    p_crossover: 0.968
+  mean_rank: 6.0
+  tuning_config: 3
+a2:
+  arm_params:
+    adf_arities:
+    - 2
+    - 3
+    init_depth:
+    - 2
+    - 4
+    mutation_depth: 3
+    p_crossover: 0.551
+  mean_rank: 4.25
+  tuning_config: 9
+a3:
+  arm_params:
+    cols: 50
+    levels_back: 25
+    rows: 4
+  mean_rank: 4.5
+  tuning_config: 12
+a3_lb1:
+  arm_params:
+    rows: 12
+  mean_rank: 5.75
+  tuning_config: 18
+a3_lbmax:
+  arm_params:
+    rows: 18
+  mean_rank: 5.5
+  tuning_config: 2
+a4:
+  arm_params:
+    input_trees: 10
+    n_trees: 20
+    p_crossover: 0.435
+    p_macro: 0.275
+    p_mutation: 0.29
+    window: 10
+  mean_rank: 5.25
+  tuning_config: 4
+a5:
+  arm_params:
+    max_modules: 12
+    module_max_depth: 4
+    mutation_depth: 2
+    p_crossover: 0.504
+    p_delete: 0.057
+    p_encapsulate: 0.087
+    p_mutation: 0.3
+    p_rewire: 0.052
+  mean_rank: 1.75
+  tuning_config: 12
+a6:
+  arm_params:
+    max_modules: 8
+    module_max_depth: 2
+    mutation_depth: 2
+    p_crossover: 0.569
+    p_delete: 0.023
+    p_encapsulate: 0.067
+    p_mutation: 0.273
+    p_rewire: 0.067
+  mean_rank: 5.0
+  tuning_config: 2
+a6_inputs:
+  arm_params: {}
+  mean_rank: 3.5
+  tuning_config: 0
+g2_arm: a5
+g2_arm_tasks_won:
+  a5: 3
+  a6: 1

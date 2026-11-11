@@ -1,6 +1,6 @@
 # Progress
 
-## 11 November 2026 — SRBench G1 check done (G1 re-run closed); tuning campaign 3,599 of 3,600
+## 11 November 2026 — SRBench G1 check done (G1 re-run closed); tuning complete; screening ready
 
 **SRBench sanity check, A1 (CERES, commit `af8ec83`, job 2869804).** 50 runs, clean logs: 10 per dataset, pop 1000 × 500 generations = 500k evaluations (SRBench's cap). Values are median test R², against the medians of the published SRBench black-box results. Results are in `results/g1_srbench/`.
 
@@ -16,10 +16,35 @@
 - Median model size is 135–384 expanded nodes. The slowest dataset, `227_cpu_small`, takes a median of 1.3 h per run.
 - **This closes the G1 re-run on the final code**: Boolean known results, the growing ADF advantage (even-4 to even-6), SRBench, pilot timings and the portability check all hold.
 
-**Tuning campaign (job 2869808, 3,600 runs at 1e10).** 3,599 runs are finished, all at commit `af8ec83`, with clean logs and no budget overshoot; they used 756 CPU-h. They are copied to `results/tuning/` on rag-server.
-- One run is still going: A5 on even-5, seed index 102 (`a5__parity5__b1e10__s102__c33dd287`). It is healthy (generation 43,400 of about 51,000 at 09:52) and should finish around 11:10.
-- Why it is slow: in a few A5 configurations the population collapses to very small programs on even-5 (about 6 nodes each), so 1e10 units buy 51 million evaluations, and Python overhead per evaluation sets the time (4–6 h, against a median of under a minute). The same happens to a few A3-lb1, A3-lbmax and A6-inputs configurations (2–3 h). These runs all fail to solve even-5, so the tuning will reject those configurations; the cost is only wall time.
-- The tuning report needs every run, so it waits for this one.
+**Tuning campaign: complete (job 2869808, commit `af8ec83`).** All 3,600 runs at budget 1e10 finished: 9 arms × 20 configurations × 4 tuning tasks × 5 seeds, with clean logs, one commit, no budget overshoot and 764 CPU-h. Results are in `results/tuning/`; the chosen configurations are in `configs/wp2/tuned.yaml`, and the full ranking in `configs/wp2/tuning_ranks.csv`.
+
+Chosen configuration per arm, with its medians over the 5 tuning seeds (test MSE on the three synthetic tuning tasks; even-5: runs solved and median units to solution):
+
+| Arm | Config | comp L2 R2 | comp L3 R3 | comp L4 R2 | even-5 |
+| --- | --- | --- | --- | --- | --- |
+| A1 | 3 | 0.0431 | 0.6881 | 0.1274 | 5/5, 2.7e8 |
+| A2 | 9 | 0.0681 | 0.6539 | 0.1436 | 5/5, 1.5e7 |
+| A3 | 12 | 0.0172 | 0.3999 | 0.0898 | 5/5, 7.9e7 |
+| A3-lb1 | 18 | 0.1995 | 0.5073 | 0.1087 | 5/5, 8.6e7 |
+| A3-lbmax | 2 | 0.3132 | 0.4895 | 0.2081 | 5/5, 5.4e8 |
+| A4 | 4 | 0.0002 | 0.0003 | 0.0107 | 5/5, 6.8e7 |
+| A5 | 12 | 0.0008 | 0.1335 | 0.0801 | 5/5, 2.6e7 |
+| A6 | 2 | 0.3124 | 0.4495 | 0.0896 | 5/5, 7.1e7 |
+| A6-inputs | 0 | 0.1999 | 0.4331 | 0.0623 | 5/5, 9.4e7 |
+
+- **G2 arm: A5.** The tuned A5 beats the tuned A6 on 3 of the 4 tuning tasks, so the G2 test compares A5 with A1. This was fixed before any screening run.
+- These are tuning tasks with 5 seeds, used only to choose configurations. They are not evidence for or against any hypothesis; the screening tasks and seeds are separate.
+- Worth watching in the screening: A4 is far ahead on the synthetic tuning tasks. Its ridge readout over 20 trees fits these targets very well.
+- Slow runs: in a few configurations (A5, A3-lb1, A3-lbmax, A6-inputs) the population collapses to programs of about 6 nodes on even-5, so 1e10 units buy 51 million evaluations and Python overhead sets the time (2–8 h, against a median of under a minute). They all fail to solve even-5 and were rejected by the tuning. None of the chosen configurations does this on even-5.
+
+**Screening campaign: written, ready to submit** (`configs/wp2/screening.yaml`, 18,720 runs).
+- 9 arms × 52 tasks × 4 budgets (1e8 to 1e11) × 10 seeds (indices 0–9). The tasks are 48 synthetic (L 1–4 × R 1–4 × three noise levels), even-6 to even-8 parity and the 11-multiplexer.
+- Estimate from the tuning speeds: about 18,000 CPU-h, of which 16,200 are the 1e11 runs. With 240 slots that is 3 to 4 days.
+- CERES allows 60 running elements per array and about 250 per user, so it is submitted as four interleaved arrays (`-t 1-18720:4`, `2-18720:4`, …). Interleaving spreads the arms and budgets evenly over the four.
+
+**Next**
+1. Michael: `git pull` on CERES and submit the four screening arrays (commands in the hand-over message; the general form is in `docs/CERES.md` §3).
+2. When they finish: collect, rsync, `make_screening.py g2 --results results/screening`. **Ask Michael at the G2 gate.**
 
 ## 10 November 2026 (later) — even-6 G1 batch done; portability check passes
 
