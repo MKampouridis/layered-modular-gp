@@ -1,5 +1,26 @@
 # Progress
 
+## 11 November 2026 — SRBench G1 check done (G1 re-run closed); tuning campaign 3,599 of 3,600
+
+**SRBench sanity check, A1 (CERES, commit `af8ec83`, job 2869804).** 50 runs, clean logs: 10 per dataset, pop 1000 × 500 generations = 500k evaluations (SRBench's cap). Values are median test R², against the medians of the published SRBench black-box results. Results are in `results/g1_srbench/`.
+
+| Dataset | lmgp A1 | IQR | gplearn | EPLEX | AFP | Operon | Linear |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1027_ESL | 0.847 | 0.019 | 0.815 | 0.857 | 0.831 | 0.858 | 0.872 |
+| 227_cpu_small | 0.958 | 0.009 | 0.526 | 0.954 | 0.930 | 0.972 | 0.709 |
+| 230_machine_cpu | 0.787 | 0.256 | 0.716 | 0.815 | 0.832 | 0.685 | 0.802 |
+| 556_analcatdata_apnea2 | 0.843 | 0.105 | −0.075 | 0.882 | 0.907 | 0.857 | −0.001 |
+| 561_cpu | 0.965 | 0.055 | 0.928 | 0.927 | 0.937 | 0.993 | 0.856 |
+
+- A1 lands among the published GP methods on all five datasets: above gplearn everywhere and within 0.07 of EPLEX and AFP. ✔ The medians moved by at most 0.008 from the 2 November laptop runs (old code).
+- Median model size is 135–384 expanded nodes. The slowest dataset, `227_cpu_small`, takes a median of 1.3 h per run.
+- **This closes the G1 re-run on the final code**: Boolean known results, the growing ADF advantage (even-4 to even-6), SRBench, pilot timings and the portability check all hold.
+
+**Tuning campaign (job 2869808, 3,600 runs at 1e10).** 3,599 runs are finished, all at commit `af8ec83`, with clean logs and no budget overshoot; they used 756 CPU-h. They are copied to `results/tuning/` on rag-server.
+- One run is still going: A5 on even-5, seed index 102 (`a5__parity5__b1e10__s102__c33dd287`). It is healthy (generation 43,400 of about 51,000 at 09:52) and should finish around 11:10.
+- Why it is slow: in a few A5 configurations the population collapses to very small programs on even-5 (about 6 nodes each), so 1e10 units buy 51 million evaluations, and Python overhead per evaluation sets the time (4–6 h, against a median of under a minute). The same happens to a few A3-lb1, A3-lbmax and A6-inputs configurations (2–3 h). These runs all fail to solve even-5, so the tuning will reject those configurations; the cost is only wall time.
+- The tuning report needs every run, so it waits for this one.
+
 ## 10 November 2026 (later) — even-6 G1 batch done; portability check passes
 
 **Even-6 parity (CERES, commit `af8ec83`, 60 runs, job 2869803).** Same settings as the other Boolean G1 cells: 30 runs per arm, pop 500, at most 100 generations, lexicase. All 60 finished with clean logs, in about 10 minutes. Results are in `results/g1_parity6/`.
